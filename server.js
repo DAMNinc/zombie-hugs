@@ -3,9 +3,8 @@
 var express = require('express');
 var exphbs  = require('express-handlebars');
 var app = express();
-var hbs = exphbs.create();
 
-app.engine('handlebars', hbs.engine);
+app.engine('handlebars', exphbs({ defaultLayout: 'main' }));
 app.set('view engine', 'handlebars');
 
 var gameId = 0;
@@ -34,7 +33,7 @@ app.get('/game/:game', function(req, res) {
 	if (!games[req.params.game]) {
 		res.redirect('/');
 	} else {
-		res.send('playing ' + games[req.params.game] + '!');
+        res.render('game', {game: games[req.params.game]});
 	}
 });
 
