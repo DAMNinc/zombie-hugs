@@ -2,6 +2,7 @@ var gulp = require('gulp');
 var rename = require('gulp-rename');
 var uglify = require('gulp-uglify');
 var rimraf = require('gulp-rimraf');
+var nodemon = require('gulp-nodemon');
 var args = require('yargs').argv;
 var browserify = require('browserify');
 var source = require('vinyl-source-stream');
@@ -59,4 +60,11 @@ gulp.task('copy-files', ['build'], function () {
 		.pipe(gulp.dest('./js'));
 });
 
-gulp.task('default', ['copy-files']);
+gulp.task('serve', function () {
+    nodemon({ script: 'server.js', ext: 'html js' })
+        .on('restart', function () {
+            console.log('restarted!')
+        })
+})
+
+gulp.task('default', ['copy-files', 'serve']);

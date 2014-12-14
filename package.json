@@ -6,9 +6,8 @@
   "dependencies": {
     "body-parser": "^1.10.0",
     "express": "^4.10.6",
-    "express-handlebars": "^1.1.0"
-  },
-  "devDependencies": {
+    "express-handlebars": "^1.1.0",
+    "gulp-nodemon": "~1.0.4",
     "browserify": "^5.12.1",
     "gulp": "^3.8.6",
     "gulp-browserify": "^0.5.0",
@@ -18,8 +17,7 @@
     "requirejs": "^2.1.15",
     "vinyl-source-stream": "^1.0.0",
     "watchify": "^1.0.6",
-    "yargs": "^1.2.6",
-    "express": "~4.10.6"
+    "yargs": "^1.2.6"
   },
   "engines": {
     "node": ">= 0.9"
