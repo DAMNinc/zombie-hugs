@@ -1,1 +1,18 @@
+{{#section 'head' }}
+<script src="/js/zombie.js"></script>
+<script>
+window.animationId = null;
+
+jQuery(document).ready(function() {
+    Zombie.start();
+});
+
+function toggleAbout() {
+    jQuery('#about').fadeToggle();
+}
+</script>
+{{/section}}
+
 Playing {{ game }}
+<div id="render-area">
+</div>
