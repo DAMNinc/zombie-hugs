@@ -50,7 +50,7 @@ app.get('/game/:game', function(req, res) {
 	if (!games[req.params.game]) {
 		res.redirect('/');
 	} else {
-		res.send('playing ' + games[req.params.game].id + '!');
+        res.render('game', { game: games[req.params.game] });
 	}
 });
 

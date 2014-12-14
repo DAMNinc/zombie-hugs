@@ -62,7 +62,7 @@ gulp.task('copy-files', ['build'], function () {
 
 gulp.task('serve', ['copy-files'], function () {
     nodemon({
-        watch: ['src'],
+        watch: ['server.js', 'src'],
         script: 'server.js',
         ext: 'html js'
     })
