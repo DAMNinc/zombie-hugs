@@ -12,6 +12,8 @@
         planeStartOpacity = 0.4,
         animating = false;
 
+
+
     var planeLocation = {
         LEFT: 0,
         RIGHT: 1,
@@ -19,8 +21,6 @@
         BOTTOM: 3,
         BACK: 4
     };
-    
-
     
     function Plane(mesh) {
         this.mesh = mesh;
