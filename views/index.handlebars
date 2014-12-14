@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Zombie Hugs</title>
+<meta charset="UTF-8">
+<link rel="stylesheet" type="text/css" href="css/main.css" />
+</head>
+<body>
+    <h1>Zombie hugs!</h1>
+    <a href="/game"> New game!</a>
+
+	{{#each games}}
+	 	<li><a href="/game/{{gameId}}">{{gameName}}</a></li>
+ 	{{/each}}
+</body>
+</html>

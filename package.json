@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "description": "DAMN good zombie game",
   "main": "dist/zombie.js",
-  "dependencies": {},
+  "dependencies": {
+    "express": "^4.10.6",
+    "express-handlebars": "^1.1.0"
+  },
   "devDependencies": {
     "browserify": "^5.12.1",
     "gulp": "^3.8.6",
