@@ -188,7 +188,9 @@ window.Zombie = new Zombie();
 
     module.exports = Player;
 },{"./sphere":3}],3:[function(require,module,exports){
-
+/**
+ * Represents a single sphere. Later, this will turn into a zombie!
+ */
 function Sphere(mesh) {
     this.mesh = mesh;
     this.direction = [ 
@@ -209,4 +211,5 @@ function Sphere(mesh) {
 }
 
 module.exports = Sphere;
+
 },{}]},{},[1]);

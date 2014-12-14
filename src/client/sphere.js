@@ -1,4 +1,6 @@
-
+/**
+ * Represents a single sphere. Later, this will turn into a zombie!
+ */
 function Sphere(mesh) {
     this.mesh = mesh;
     this.direction = [ 
