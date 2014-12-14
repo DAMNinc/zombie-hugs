@@ -11,6 +11,7 @@ var camera, scene, renderer,
     
     animating = false,
     Player = require('./player'),
+    Fox = require('./fox');
     Sphere = require('./sphere');
 
 function init() {

@@ -1,7 +1,9 @@
+'use strict';
+
 var gulp = require('gulp');
 var rename = require('gulp-rename');
 var uglify = require('gulp-uglify');
-var rimraf = require('gulp-rimraf');
+var del = require('del');
 var nodemon = require('gulp-nodemon');
 var args = require('yargs').argv;
 var browserify = require('browserify');
@@ -10,15 +12,14 @@ var watchify = require('watchify');
 
 var mainFile = './src/client/zombie.js';
 
-gulp.task('clean', function () {
-    return gulp.src(['build/**/*'], {read: false})
-        .pipe(rimraf());
+gulp.task('clean', function (cb) {
+    del(['build/**/*'], cb);
 });
 
 gulp.task('build', ['clean'], function() {
 	var b = browserify({
-             entries: [mainFile],
-         });
+        entries: [mainFile],
+    });
 	return browserifyApp(b);
 });
 
@@ -57,7 +58,7 @@ gulp.task('compress', ['build'], function () {
 
 gulp.task('copy-files', ['build'], function () {
 	return gulp.src(['./build/*.js'])
-		.pipe(gulp.dest('./js'));
+		.pipe(gulp.dest('./public/js'));
 });
 
 gulp.task('serve', ['copy-files'], function () {
@@ -66,10 +67,10 @@ gulp.task('serve', ['copy-files'], function () {
         script: 'server.js',
         ext: 'html js'
     })
-        .on('change', ['copy-files'])
-        .on('restart', function () {
-            console.log('restarted!')
-        })
+    .on('change', ['copy-files'])
+    .on('restart', function () {
+        console.log('restarted!')
+    })
 })
 
 gulp.task('default', ['serve']);
