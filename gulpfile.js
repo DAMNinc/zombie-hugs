@@ -10,7 +10,7 @@ var watchify = require('watchify');
 var mainFile = './src/client/zombie.js';
 
 gulp.task('clean', function () {
-    return gulp.src(['build/**/*', 'dist/**/*'], {read: false})
+    return gulp.src(['build/**/*'], {read: false})
         .pipe(rimraf());
 });
 
@@ -54,9 +54,9 @@ gulp.task('compress', ['build'], function () {
         .pipe(gulp.dest('./build'));
 });
 
-gulp.task('copy-files', ['compress'], function () {
+gulp.task('copy-files', ['build'], function () {
 	return gulp.src(['./build/*.js'])
-		.pipe(gulp.dest('./dist'));
+		.pipe(gulp.dest('./js'));
 });
 
-gulp.task('default', ['build']);
+gulp.task('default', ['copy-files']);
