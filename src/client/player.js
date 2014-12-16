@@ -1,14 +1,21 @@
 var Fox = require('./fox');
 
-function Player(scene, camera) {
+// The camera and game should never be exposed in the public API for the player.
+var camera = null,
+    game = null;
+
+
+/**
+ * Represents a playable character.
+ * The character is controllable with keyboard and mouse.
+ */
+function Player(gam, cam) {
+    camera = cam;
+    game = gam;
     this.forward = false;
     this.backward = false;
     this.left = false;
     this.right = false;
-    this.camera = camera;
-    this.scene = scene;
-
-
 
     // Register the player for key events.
     var self = this;
@@ -59,54 +66,33 @@ Player.prototype.fire = function() {
     // Set the fox at the camera position.
     // The fox is "standing over the y-axis" so a little bit is
     // subtracted from the y-axis coordinate.
-    fox.foxObj.mesh.position.x = this.camera.position.x;
-    fox.foxObj.mesh.position.y = this.camera.position.y-50;
-    fox.foxObj.mesh.position.z = this.camera.position.z;
+    fox.foxObj.mesh.position.x = camera.position.x;
+    fox.foxObj.mesh.position.y = camera.position.y-50;
+    fox.foxObj.mesh.position.z = camera.position.z;
 
     // Rotate 180 degrees to face away from player.
     fox.foxObj.mesh.rotation.y = Math.PI;
 
     // Add to scene and fox array.
-    window.spheres.push(fox);
-    this.scene.add(fox.foxObj.mesh);
+    game.addZombie(fox);
 };
 
-Player.prototype.updatePosition = function (elapsed) {
-    var curPosX = this.camera.position.x;
-    var curPosZ = this.camera.position.z;
-    var curRot = this.camera.rotation.y;
+Player.prototype.update = function (elapsed) {
+    var curPosX = camera.position.x;
+    var curPosZ = camera.position.z;
 
-    var tr = 5.0;
-    var rot = 0.025;
-
-
-    //if (this.forward) {
-    //    // For free movement:
-    //    //curPosX -= Math.sin(-curRot) * -tr;
-    //    //curPosZ -= Math.cos(-curRot) * tr;
-    //    curPosZ -= tr;
-    //}
-    //else if (this.backward) {
-    //    // For free movement:
-    //    //curPosX -= Math.sin(curRot) * -tr;
-    //    //curPosZ += Math.cos(curRot) * tr;
-    //    curPosZ += tr;
-    //}
+    // How much to move.
+    var tr = 100.0;
 
     if (this.left) {
-        curPosX -= tr;
-        // For free movement.
-        //curRot += rot;
+        curPosX -= tr*elapsed;
     }
     else if (this.right) {
-        // For free movement.
-        //curRot -= rot;
-        curPosX += tr;
+        curPosX += tr*elapsed;
     }
 
-    this.camera.rotation.y = curRot;
-    this.camera.position.x = curPosX;
-    this.camera.position.z = curPosZ;
-}
+    camera.position.x = curPosX;
+    camera.position.z = curPosZ;
+};
 
 module.exports = Player;

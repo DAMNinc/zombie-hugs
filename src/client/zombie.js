@@ -1,82 +1,127 @@
-window.spheres = [];
+'use strict';
+
 var camera, scene, renderer,
-    player = null,
+    gameState = null,
     clock = null,
-    windowWidth = window.innerWidth-100,
-    windowHeight = window.innerHeight-100,
-    windowDepth = 1000,
-    maxwidth = windowWidth/2,
-    maxheight = windowHeight/2,
-    maxdepth = windowDepth/2,
-    
+    animationId = null,
     animating = false,
     Player = require('./player'),
-    Fox = require('./fox');
+    Fox = require('./fox'),
     Sphere = require('./sphere');
 
-function init() {
+function updateGameState(elapsed) {
+    if (gameState.player1 != null) {
+        gameState.player1.update(elapsed);
+    }
 
+    if (gameState.player2 != null) {
+        gameState.player2.update(elapsed);
+    }
+
+    for (var i = 0; i < gameState.zombies.length; i++) {
+        gameState.zombies[i].update(elapsed);
+    }
+}
+
+/**
+ * Handle a resize of the viewport
+ */
+function handleResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+/**
+ * Initializes the scene, renderer and game state.
+ */
+function init(renderAreaId) {
     // Init scene and camera.
     scene = new THREE.Scene();
-
-    camera = new THREE.PerspectiveCamera(45, windowWidth / windowHeight, 1, 10000);
+    camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
     camera.position.z = 2000;
-
-    var pointLight = new THREE.PointLight(0xffffff);
-    pointLight.position.x = maxwidth - 50;
-    pointLight.position.y = maxheight - 50;
-    pointLight.position.z = maxdepth - 50;
-    scene.add( pointLight );
 
     // Init timetaking
     clock = new THREE.Clock(true);
 
-    // Init objects
-    player = new Player(scene, camera);
-    
-    // Init renderer.
+    // Init gamestate
+    gameState = {
+        player1: null,
+        player2: null,
+        zombies: []
+    };
+
+    // Init renderer and add its DOM element to the given render area.
     renderer = new THREE.WebGLRenderer({ alpha: true });
-    renderer.setSize( windowWidth, windowHeight );
+    var renderArea = document.getElementById(renderAreaId);
+    if (renderArea.hasChildNodes())
+        renderArea.removeChild(renderArea.childNodes[0]);
+    renderArea.appendChild(renderer.domElement);
 
-    var renderarea = document.getElementById('render-area');
-    if (renderarea.hasChildNodes())
-        renderarea.removeChild(renderarea.childNodes[0]);
-    renderarea.appendChild(renderer.domElement);
-
+    // Trigger a resize and set up a window event for resizing.
+    handleResize();
+    window.addEventListener('resize', handleResize);
 }
 
+/**
+ * Animates everything.
+ */
 function animate() {
     if (animating) {
+        // clock.getDelta returns the time in seconds since last call.
         var elapsed = clock.getDelta();
+        updateGameState(elapsed);
 
-        for (var i = 0; i < spheres.length; i++) {
-            spheres[i].updatePosition(elapsed);
-        }
-
-        player.updatePosition(elapsed);
-
-        // note: three.js includes requestAnimationFrame shim
-        window.animationId = requestAnimationFrame( animate );
-        render();
+        // Re-animate and render.
+        animationId = requestAnimationFrame(animate);
+        renderer.render(scene, camera);
     } 
 }
 
-function render() {
-    renderer.render( scene, camera );
+function ZombieHugs() {
 }
 
-var Zombie = function() {};
-
-Zombie.prototype.start = function() {
-    if (window.animationId !== null)
-        cancelAnimationFrame(window.animationId);
-    init();
+/**
+ * Starts the game.
+ */
+ZombieHugs.prototype.start = function(renderArea) {
+    // Cancel the previous animation loop.
+    if (animationId !== null)
+        cancelAnimationFrame(animationId);
+    init(renderArea);
     animating = true;
     animate();
-}
+};
 
-Zombie.prototype.stop = function() {
+ZombieHugs.prototype.stop = function() {
     animating = false;
-}
+};
 
-window.Zombie = new Zombie();
+ZombieHugs.prototype.getGame = function() {
+    return game;
+};
+
+/**
+ * Tells the game that a player wants to join the current game. If the game
+ * already has two players, it cannot be joined as a player.
+ */
+ZombieHugs.prototype.joinGame = function(playerID) {
+    // Create a new player and give the player a reference to this game.
+    // The player also controls the camera of the scene.
+    // TODO, check if both players are already active.
+    gameState.player1 = new Player(this, camera);
+};
+
+/**
+ * Adds the given object to the scene.
+ */
+ZombieHugs.prototype.addZombie = function(zombie) {
+
+    // Add the mesh of the zombie to the scene.
+    scene.add(zombie.getMesh());
+
+    // Save a reference to the zombie so it can be updated.
+    gameState.zombies.push(zombie);
+};
+
+window.ZombieHugs = new ZombieHugs();

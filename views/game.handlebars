@@ -1,10 +1,9 @@
 {{#section 'head' }}
 <script src="/js/zombie.js"></script>
 <script>
-window.animationId = null;
-
 jQuery(document).ready(function() {
-    Zombie.start();
+    ZombieHugs.start('render-area');
+    ZombieHugs.joinGame({{ game.id }});
 });
 
 function toggleAbout() {

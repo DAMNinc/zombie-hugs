@@ -1,86 +1,131 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-window.spheres = [];
+'use strict';
+
 var camera, scene, renderer,
-    player = null,
+    gameState = null,
     clock = null,
-    windowWidth = window.innerWidth-100,
-    windowHeight = window.innerHeight-100,
-    windowDepth = 1000,
-    maxwidth = windowWidth/2,
-    maxheight = windowHeight/2,
-    maxdepth = windowDepth/2,
-    
+    animationId = null,
     animating = false,
     Player = require('./player'),
-    Fox = require('./fox');
+    Fox = require('./fox'),
     Sphere = require('./sphere');
 
-function init() {
+function updateGameState(elapsed) {
+    if (gameState.player1 != null) {
+        gameState.player1.update(elapsed);
+    }
 
+    if (gameState.player2 != null) {
+        gameState.player2.update(elapsed);
+    }
+
+    for (var i = 0; i < gameState.zombies.length; i++) {
+        gameState.zombies[i].update(elapsed);
+    }
+}
+
+/**
+ * Handle a resize of the viewport
+ */
+function handleResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+/**
+ * Initializes the scene, renderer and game state.
+ */
+function init(renderAreaId) {
     // Init scene and camera.
     scene = new THREE.Scene();
-
-    camera = new THREE.PerspectiveCamera(45, windowWidth / windowHeight, 1, 10000);
+    camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
     camera.position.z = 2000;
-
-    var pointLight = new THREE.PointLight(0xffffff);
-    pointLight.position.x = maxwidth - 50;
-    pointLight.position.y = maxheight - 50;
-    pointLight.position.z = maxdepth - 50;
-    scene.add( pointLight );
 
     // Init timetaking
     clock = new THREE.Clock(true);
 
-    // Init objects
-    player = new Player(scene, camera);
-    
-    // Init renderer.
+    // Init gamestate
+    gameState = {
+        player1: null,
+        player2: null,
+        zombies: []
+    };
+
+    // Init renderer and add its DOM element to the given render area.
     renderer = new THREE.WebGLRenderer({ alpha: true });
-    renderer.setSize( windowWidth, windowHeight );
+    var renderArea = document.getElementById(renderAreaId);
+    if (renderArea.hasChildNodes())
+        renderArea.removeChild(renderArea.childNodes[0]);
+    renderArea.appendChild(renderer.domElement);
 
-    var renderarea = document.getElementById('render-area');
-    if (renderarea.hasChildNodes())
-        renderarea.removeChild(renderarea.childNodes[0]);
-    renderarea.appendChild(renderer.domElement);
-
+    // Trigger a resize and set up a window event for resizing.
+    handleResize();
+    window.addEventListener('resize', handleResize);
 }
 
+/**
+ * Animates everything.
+ */
 function animate() {
     if (animating) {
+        // clock.getDelta returns the time in seconds since last call.
         var elapsed = clock.getDelta();
+        updateGameState(elapsed);
 
-        for (var i = 0; i < spheres.length; i++) {
-            spheres[i].updatePosition(elapsed);
-        }
-
-        player.updatePosition(elapsed);
-
-        // note: three.js includes requestAnimationFrame shim
-        window.animationId = requestAnimationFrame( animate );
-        render();
+        // Re-animate and render.
+        animationId = requestAnimationFrame(animate);
+        renderer.render(scene, camera);
     } 
 }
 
-function render() {
-    renderer.render( scene, camera );
+function ZombieHugs() {
 }
 
-var Zombie = function() {};
-
-Zombie.prototype.start = function() {
-    if (window.animationId !== null)
-        cancelAnimationFrame(window.animationId);
-    init();
+/**
+ * Starts the game.
+ */
+ZombieHugs.prototype.start = function(renderArea) {
+    // Cancel the previous animation loop.
+    if (animationId !== null)
+        cancelAnimationFrame(animationId);
+    init(renderArea);
     animating = true;
     animate();
-}
+};
 
-Zombie.prototype.stop = function() {
+ZombieHugs.prototype.stop = function() {
     animating = false;
-}
+};
 
-window.Zombie = new Zombie();
+ZombieHugs.prototype.getGame = function() {
+    return game;
+};
+
+/**
+ * Tells the game that a player wants to join the current game. If the game
+ * already has two players, it cannot be joined as a player.
+ */
+ZombieHugs.prototype.joinGame = function(playerID) {
+    // Create a new player and give the player a reference to this game.
+    // The player also controls the camera of the scene.
+    // TODO, check if both players are already active.
+    gameState.player1 = new Player(this, camera);
+};
+
+/**
+ * Adds the given object to the scene.
+ */
+ZombieHugs.prototype.addZombie = function(zombie) {
+
+    // Add the mesh of the zombie to the scene.
+    scene.add(zombie.getMesh());
+
+    // Save a reference to the zombie so it can be updated.
+    gameState.zombies.push(zombie);
+};
+
+window.ZombieHugs = new ZombieHugs();
 
 },{"./fox":2,"./player":3,"./sphere":4}],2:[function(require,module,exports){
 /**
@@ -804,25 +849,36 @@ function Fox() {
     this.foxObj.animalA.timeScale = this.foxObj.animalB.timeScale = 0.9;
 };
 
-Fox.prototype.updatePosition = function(elapsed) {
+Fox.prototype.update = function(elapsed) {
     this.foxObj.mesh.position.z -= elapsed * this.speed;
     this.foxObj.update(elapsed*1000);
-}
+};
+
+Fox.prototype.getMesh = function() {
+    return this.foxObj.mesh;
+};
 
 module.exports = Fox;
 
 },{}],3:[function(require,module,exports){
 var Fox = require('./fox');
 
-function Player(scene, camera) {
+// The camera and game should never be exposed in the public API for the player.
+var camera = null,
+    game = null;
+
+
+/**
+ * Represents a playable character.
+ * The character is controllable with keyboard and mouse.
+ */
+function Player(gam, cam) {
+    camera = cam;
+    game = gam;
     this.forward = false;
     this.backward = false;
     this.left = false;
     this.right = false;
-    this.camera = camera;
-    this.scene = scene;
-
-
 
     // Register the player for key events.
     var self = this;
@@ -873,55 +929,34 @@ Player.prototype.fire = function() {
     // Set the fox at the camera position.
     // The fox is "standing over the y-axis" so a little bit is
     // subtracted from the y-axis coordinate.
-    fox.foxObj.mesh.position.x = this.camera.position.x;
-    fox.foxObj.mesh.position.y = this.camera.position.y-50;
-    fox.foxObj.mesh.position.z = this.camera.position.z;
+    fox.foxObj.mesh.position.x = camera.position.x;
+    fox.foxObj.mesh.position.y = camera.position.y-50;
+    fox.foxObj.mesh.position.z = camera.position.z;
 
     // Rotate 180 degrees to face away from player.
     fox.foxObj.mesh.rotation.y = Math.PI;
 
     // Add to scene and fox array.
-    window.spheres.push(fox);
-    this.scene.add(fox.foxObj.mesh);
+    game.addZombie(fox);
 };
 
-Player.prototype.updatePosition = function (elapsed) {
-    var curPosX = this.camera.position.x;
-    var curPosZ = this.camera.position.z;
-    var curRot = this.camera.rotation.y;
+Player.prototype.update = function (elapsed) {
+    var curPosX = camera.position.x;
+    var curPosZ = camera.position.z;
 
-    var tr = 5.0;
-    var rot = 0.025;
-
-
-    //if (this.forward) {
-    //    // For free movement:
-    //    //curPosX -= Math.sin(-curRot) * -tr;
-    //    //curPosZ -= Math.cos(-curRot) * tr;
-    //    curPosZ -= tr;
-    //}
-    //else if (this.backward) {
-    //    // For free movement:
-    //    //curPosX -= Math.sin(curRot) * -tr;
-    //    //curPosZ += Math.cos(curRot) * tr;
-    //    curPosZ += tr;
-    //}
+    // How much to move.
+    var tr = 100.0;
 
     if (this.left) {
-        curPosX -= tr;
-        // For free movement.
-        //curRot += rot;
+        curPosX -= tr*elapsed;
     }
     else if (this.right) {
-        // For free movement.
-        //curRot -= rot;
-        curPosX += tr;
+        curPosX += tr*elapsed;
     }
 
-    this.camera.rotation.y = curRot;
-    this.camera.position.x = curPosX;
-    this.camera.position.z = curPosZ;
-}
+    camera.position.x = curPosX;
+    camera.position.z = curPosZ;
+};
 
 module.exports = Player;
 

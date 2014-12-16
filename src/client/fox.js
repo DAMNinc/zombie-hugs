@@ -719,9 +719,13 @@ function Fox() {
     this.foxObj.animalA.timeScale = this.foxObj.animalB.timeScale = 0.9;
 };
 
-Fox.prototype.updatePosition = function(elapsed) {
+Fox.prototype.update = function(elapsed) {
     this.foxObj.mesh.position.z -= elapsed * this.speed;
     this.foxObj.update(elapsed*1000);
-}
+};
+
+Fox.prototype.getMesh = function() {
+    return this.foxObj.mesh;
+};
 
 module.exports = Fox;
