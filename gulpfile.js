@@ -63,14 +63,11 @@ gulp.task('copy-files', ['build'], function () {
 
 gulp.task('serve', ['copy-files'], function () {
     nodemon({
-        watch: ['server.js', 'src'],
+        watch: ['server.js', 'src', 'lib'],
         script: 'server.js',
         ext: 'html js'
     })
-    .on('change', ['copy-files'])
-    .on('restart', function () {
-        console.log('restarted!')
-    })
+    .on('change', ['copy-files']);
 })
 
 gulp.task('default', ['serve']);

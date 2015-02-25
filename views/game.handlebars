@@ -2,8 +2,7 @@
 <script src="/js/zombie.js"></script>
 <script>
 jQuery(document).ready(function() {
-    ZombieHugs.start('render-area');
-    ZombieHugs.joinGame({{ game.id }});
+    ZombieHugs.start('render-area', {{ game.id }});
 });
 
 function toggleAbout() {

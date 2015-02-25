@@ -2,109 +2,62 @@
 
 var express = require('express');
 var exphbs  = require('express-handlebars');
-var bodyParser = require('body-parser')
-
+var bodyParser = require('body-parser');
 var app = express();
+var server = require('http').Server(app);
+var io = require('socket.io')(server);
+
+var logger = require('./lib/logger');
+var controller = require('./lib/controller');
+
 var hbs = exphbs.create({	
-    defaultLayout: 'main',
+  defaultLayout: 'main',
     helpers: {
-        section: function(name, options) {
-            if(!this._sections) this._sections = {};
-            this._sections[name] = options.fn(this);
-            return null;
-        }
+      section: function(name, options) {
+        if(!this._sections) this._sections = {};
+        this._sections[name] = options.fn(this);
+        return null;
+      }
     }
 });
 
 app.engine('handlebars', hbs.engine);
 app.set('view engine', 'handlebars');
 
-var gameId = 0;
-var games = {};
-
 app.use(express.static(__dirname + '/public'));
-
 app.use(bodyParser.json());
 
 app.get('/', function (req, res) {
-	var gameArray = [];
-  for (var key in games) {
-  	gameArray.push({ gameId: key, gameName: games[key].id });
-  }
-
-	var data = { games: gameArray  };
-
+	var data = { games: controller.games };
   res.render('index', data);
 });
 
 app.get('/game', function(req, res) {
-	var myId = gameId++;
-	games[myId] = new Game();
-	games[myId].id = myId;
-	games[myId].player1 = {x: 1, y: 0};
-	games[myId].player2 = {x: 0, y: 1};
-	res.redirect('/game/' + myId + '?player=1');
+  var gameId = controller.newGame();
+	res.redirect('/game/' + gameId);
 });
 
 app.get('/game/:game', function(req, res) {
-	if (!games[req.params.game]) {
+	if (!controller.games[req.params.game]) {
+    logger.verbose('Tried to join game that does not exist');
 		res.redirect('/');
 	} else {
-        res.render('game', { game: games[req.params.game] });
+    res.render('game', { game: controller.games[req.params.game] });
 	}
 });
 
-app.get('/game/:game/get', function(req, res) {
-	if (!games[req.params.game]) {
-		res.redirect('/');
-	} else {
-		res.send(games[req.params.game]);
-	}
+io.on('connection', function(socket) {
+  controller.setupSocket(socket);
 });
 
-app.post('/game/:game/update', function(req, res) {
-	if (!games[req.params.game]) {
-		res.redirect('/');
-	} else {
-		console.log(req.body);
-
-		var game = games[req.params.game];
-		var updatedGame = req.body;
-
-		var player = req.param("player");
-		if (player == 1) {
-			game.player1 = updatedGame.player1;
-			game.balls1 = updatedGame.balls1;
-		}
-
-		res.send(game);
-	}
+io.on('error', function(err) {
+  logger.error(err);
 });
 
-app.get('/join/:game', function(req, res) {
-	if (!games[req.params.game]) {
-		res.redirect('/');
-	} else {
-		res.redirect('/game/' + games[req.params.game].id + '?player=2');
-	}
+server.listen(3000, function() {
+  logger.verbose('Example app listening at 3000');
 });
 
-var server = app.listen(3000, function () {
-
-  var host = server.address().address;
-  var port = server.address().port;
-
-  console.log('Example app listening at http://%s:%s', host, port);
-
+server.on('error', function(err) {
+  logger.error(err);
 });
-
-
-var Game = function() {
-	// positions
-	var id;
-	var player1;
-	var player2;
-
-	var balls1 = [];
-	var balls2 = [];
-};
