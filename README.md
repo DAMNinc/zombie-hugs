@@ -5,7 +5,8 @@ Fire those zombies away (actually, it's foxes right now).
 
 To run the server:
 
-    node server.js
+    npm install
+    gulp
 
 Credits
 -------
