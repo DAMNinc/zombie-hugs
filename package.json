@@ -22,10 +22,11 @@
     "yargs": "^1.2.6"
   },
   "engines": {
-    "node": ">= 0.9"
+    "node": ">= 0.10"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "prestart": "gulp dist",
     "start": "node server.js"
   },
   "keywords": [],

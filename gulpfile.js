@@ -12,20 +12,11 @@ var watchify = require('watchify');
 
 var mainFile = './src/client/zombie.js';
 
-gulp.task('clean', function (cb) {
-    del(['build/**/*'], cb);
-});
-
-gulp.task('build', ['clean'], function() {
-	var b = browserify({
-        entries: [mainFile],
-    });
-	return browserifyApp(b);
-});
-
-gulp.task('watch', function () {
-	watchForChangesAndBrowserify();
-});
+function browserifyApp(b) {
+  return b.bundle()
+    .pipe(source('zombie.js'))
+    .pipe(gulp.dest('./build/'));
+}
 
 function watchForChangesAndBrowserify(){
   // you need to pass these three config option to browserify
@@ -43,11 +34,20 @@ function watchForChangesAndBrowserify(){
   browserifyApp(b);
 }
 
-function browserifyApp(b) {
-  return b.bundle()
-    .pipe(source('zombie.js'))
-    .pipe(gulp.dest('./build/'));
-}
+gulp.task('clean', function (cb) {
+    del(['build/**/*'], cb);
+});
+
+gulp.task('build', ['clean'], function() {
+	var b = browserify({
+        entries: [mainFile],
+    });
+	return browserifyApp(b);
+});
+
+gulp.task('watch', function () {
+	watchForChangesAndBrowserify();
+});
 
 gulp.task('compress', ['build'], function () {
     return gulp.src('./build/*.js')
@@ -56,18 +56,18 @@ gulp.task('compress', ['build'], function () {
         .pipe(gulp.dest('./build'));
 });
 
-gulp.task('copy-files', ['build'], function () {
+gulp.task('dist', ['build'], function () {
 	return gulp.src(['./build/*.js'])
 		.pipe(gulp.dest('./public/js'));
 });
 
-gulp.task('serve', ['copy-files'], function () {
+gulp.task('serve', ['dist'], function () {
     nodemon({
         watch: ['server.js', 'src', 'lib'],
         script: 'server.js',
         ext: 'html js'
     })
-    .on('change', ['copy-files']);
+    .on('change', ['dist']);
 })
 
 gulp.task('default', ['serve']);
