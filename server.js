@@ -24,6 +24,7 @@ var hbs = exphbs.create({
 app.engine('handlebars', hbs.engine);
 app.set('view engine', 'handlebars');
 
+app.set('port', (process.env.PORT || 3000));
 app.use(express.static(__dirname + '/public'));
 app.use(bodyParser.json());
 
@@ -54,8 +55,8 @@ io.on('error', function(err) {
   logger.error(err);
 });
 
-server.listen(3000, function() {
-  logger.verbose('Example app listening at 3000');
+server.listen(app.get('port'), function() {
+  logger.verbose('Example app listening at ' + app.get('port'));
 });
 
 server.on('error', function(err) {
