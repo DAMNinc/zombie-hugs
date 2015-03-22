@@ -1,3 +1,5 @@
+'use strict';
+
 var Fox = require('./fox');
 
 // The camera and game should never be exposed in the public API for the player
@@ -9,7 +11,7 @@ var game = null;
  * Represents a playable character.
  * The character is controllable with keyboard and mouse.
  */
-function Player(gam, cam) {
+function Player(gam, cam, socket) {
   camera = cam;
   game = gam;
   this.forward = false;
@@ -17,16 +19,19 @@ function Player(gam, cam) {
   this.left = false;
   this.right = false;
   this.id = null;
+  this.socket = socket;
 
   // Register the player for key events.
   var self = this;
   var startMoveEvent = function(keyEvent) {
     console.log('Key down ' + keyEvent.keyCode);
+    self.socket.emit('move.start', keyEvent.keyCode);
     self.toggleMovement(keyEvent.keyCode, true);
   }
 
   var endMoveEvent = function(keyEvent) {
     console.log('Key up ' + keyEvent.keyCode);
+    self.socket.emit('move.end', keyEvent.keyCode);
     self.toggleMovement(keyEvent.keyCode, false);
   }
 
@@ -80,7 +85,6 @@ Player.prototype.fire = function() {
 
 Player.prototype.update = function (elapsed) {
   var curPosX = camera.position.x;
-  var curPosZ = camera.position.z;
 
   // How much to move.
   var tr = 100.0;
@@ -93,7 +97,6 @@ Player.prototype.update = function (elapsed) {
   }
 
   camera.position.x = curPosX;
-  camera.position.z = curPosZ;
 };
 
 Player.prototype.setId = function(id) {
