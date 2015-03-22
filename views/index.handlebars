@@ -1,6 +1,48 @@
-<h1>Zombie hugs!</h1>
-<a href="/game">New game!</a>
+<div class="container">
+<div class="jumbotron">
+	<h1>Zombie hugs (what the fox!)</h1>
+	<p>Zombie Hugs (also known as What the Fox!) is a 2015 science fiction zombie/fox-themed first-person shooter (FPS) video game by DAMN Software. It is considered one of the most significant and influential titles in the video game industry, for having ushered in the popularity of the first-person shooter genre.</p>
+</div>
 
-{{#each games}}
- 	<li><a href="/game/{{id}}">{{id}}</a></li>
-{{/each}}
+<div class="row">
+	<div class="col-sm-4">
+	<center>
+		
+		<a href="/game" class="btn btn-primary btn-raised">
+		  Start new game!
+		</a>
+
+		<div class="bs-component">
+			<blockquote>
+				<p><i>This game has changed my life!</i></p>
+				<small>John Carmack in <cite title="Time Magazine">TIME</cite></small>
+			</blockquote>
+		</div>
+	</center>
+	</div>
+	<div class="col-sm-8">
+		<div class="bs-component">
+			<div class="list-group">
+				{{#each games}}
+				<div class="list-group-item">
+					<div class="row-action-primary">
+						<a class="btn btn-success btn-fab btn-raised" href="/game/{{id}}">
+						{{id}}
+						</a>						
+					</div>
+					<div class="row-content">
+						<div class="least-content">[Start time]</div>
+						<div class="list-group-item-heading">[X's game]</div>
+						<p class="list-group-item-text">
+							<a href="/game/{{id}}" class="btn btn-success btn-raised"><span class="glyphicon glyphicon-screenshot" aria-hidden="true"></span>&nbsp;&nbsp;Join</a>
+							<a href="#" class="btn btn-info btn-raised"><span class="glyphicon glyphicon-eye-open" aria-hidden="true"></span>&nbsp;&nbsp;Spectate</a>
+						</p>
+					</div>
+				</div>
+				<div class="list-group-separator"></div>
+				{{/each}}
+			</div>
+		</div>
+	</div>
+</div>
+</div>
