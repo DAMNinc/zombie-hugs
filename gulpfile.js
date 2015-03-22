@@ -45,6 +45,15 @@ gulp.task('build', ['clean'], function() {
 	return browserifyApp(b);
 });
 
+gulp.task('css', function () {
+  return gulp.src(['./src/css/*'])
+    .pipe(gulp.dest('./public/css'));
+});
+gulp.task('content', function () {
+  return gulp.src(['./src/content/*'])
+    .pipe(gulp.dest('./public/content'));
+});
+
 gulp.task('watch', function () {
 	watchForChangesAndBrowserify();
 });
@@ -56,7 +65,7 @@ gulp.task('compress', ['build'], function () {
         .pipe(gulp.dest('./build'));
 });
 
-gulp.task('dist', ['build'], function () {
+gulp.task('dist', ['build','css','content'], function () {
 	return gulp.src(['./build/*.js'])
 		.pipe(gulp.dest('./public/js'));
 });
