@@ -34,7 +34,7 @@ ROME.Animal = function( geometry, parseMorphTargetsNames ) {
 			isPlaying = true;
 			that.morph = 0;
 
-			THREE.AnimationHandler.addToUpdate( that );
+			THREE.AnimationHandler.play( that );
 
 		}
 		
