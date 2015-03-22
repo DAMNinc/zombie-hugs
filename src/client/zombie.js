@@ -42,6 +42,7 @@ function setupEvents() {
   // Event for receiving information about zombies.
   socket.on('zombie', function(zombie) {
     console.log('Zombie added', zombie);
+    gameState.opponent.fire();
   });
 
   // Event for receiving player information from the server.
@@ -146,7 +147,7 @@ ZombieHugs.prototype.joinGame = function(gameId) {
 /**
  * Adds the given object to the scene.
  */
-ZombieHugs.prototype.addZombie = function(zombie) {
+ZombieHugs.prototype.addZombie = function(zombie, player) {
 
     var mesh = zombie.getMesh();
 
@@ -161,7 +162,11 @@ ZombieHugs.prototype.addZombie = function(zombie) {
       player: gameState.player.id
     };
 
-    socket.emit('zombie', zombie);
+    // Only emit on the socket when it is the current player that adds a
+    // zombie.
+    if (player === gameState.player) {
+      socket.emit('zombie', zombie);
+    }
 };
 
 window.ZombieHugs = new ZombieHugs();
