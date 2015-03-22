@@ -10,6 +10,7 @@ var camera = null,
     animationId = null,
     animating = false,
     Player = require('./player'),
+    Opponent = require('./opponent'),
     Fox = require('./fox'),
     Sphere = require('./sphere'),
     socket = io();
@@ -51,7 +52,10 @@ function setupEvents() {
   });
 
   socket.on('opponent', function(player) {
-    console.log('My opponent is', player.id);
+    gameState.opponent = new Opponent(gameState.game, socket);
+    gameState.opponent.setId(player.id);
+    scene.add(gameState.opponent.mesh);
+    console.log('My opponent is', gameState.opponent.id);
   });
 }
 
@@ -69,12 +73,11 @@ function init(renderAreaId) {
 
   // Init gamestate
   gameState = {
+    game: null,
     player: null,
     opponent: null,
     zombies: []
   };
-
-  setupEvents();
 
   // Init renderer and add its DOM element to the given render area.
   renderer = new THREE.WebGLRenderer({ alpha: true });
@@ -113,6 +116,8 @@ ZombieHugs.prototype.start = function(renderArea, gameId) {
   // Cancel the previous animation loop.
   if (animationId !== null) cancelAnimationFrame(animationId);
   init(renderArea);
+  gameState.game = this;
+  setupEvents();
   animating = true;
   animate();
   // TODO: Start as spectator, make a join button that calls this function.
@@ -134,7 +139,7 @@ ZombieHugs.prototype.getGame = function() {
 ZombieHugs.prototype.joinGame = function(gameId) {
   // Create a new player and give the player a reference to this game.
   // The player also controls the camera of the scene.
-  gameState.player = new Player(this, camera);
+  gameState.player = new Player(this, camera, socket);
   socket.emit('join', {gameId: gameId});
 };
 
