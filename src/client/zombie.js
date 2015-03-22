@@ -13,6 +13,7 @@ var camera = null,
     Opponent = require('./opponent'),
     Fox = require('./fox'),
     Sphere = require('./sphere'),
+    Terrain = require('./terrain'),
     socket = io();
 
 function updateGameState(elapsed) {
@@ -68,6 +69,7 @@ function init(renderAreaId) {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
   camera.position.z = 2000;
+  
 
   // Init timetaking
   clock = new THREE.Clock(true);
@@ -79,6 +81,9 @@ function init(renderAreaId) {
     opponent: null,
     zombies: []
   };
+
+  var terrain = new Terrain(128, 128, camera.position.y);
+  scene.add(terrain.getMesh());
 
   // Init renderer and add its DOM element to the given render area.
   renderer = new THREE.WebGLRenderer({ alpha: true });
