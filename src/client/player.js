@@ -67,7 +67,7 @@ Player.prototype.toggleMovement = function (keyCode, directionBool) {
 };
 
 Player.prototype.fire = function() {
-  var fox = new Fox();
+  var fox = new Fox(-1);
 
   // Set the fox at the camera position.
   // The fox is "standing over the y-axis" so a little bit is
@@ -80,7 +80,7 @@ Player.prototype.fire = function() {
   fox.foxObj.mesh.rotation.y = Math.PI;
 
   // Add to scene and fox array.
-  game.addZombie(fox);
+  game.addZombie(fox, this);
 };
 
 Player.prototype.update = function (elapsed) {

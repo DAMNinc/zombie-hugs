@@ -55,6 +55,23 @@ Opponent.prototype.toggleMovement = function(keyCode, directionBool) {
   }
 };
 
+Opponent.prototype.fire = function() {
+  var fox = new Fox(1);
+
+  // Set the fox at the camera position.
+  // The fox is "standing over the y-axis" so a little bit is
+  // subtracted from the y-axis coordinate.
+  fox.foxObj.mesh.position.x = this.mesh.position.x;
+  fox.foxObj.mesh.position.y = this.mesh.position.y-50;
+  fox.foxObj.mesh.position.z = this.mesh.position.z;
+
+  // Rotate 180 degrees to face away from player.
+  //fox.foxObj.mesh.rotation.y = Math.PI;
+
+  // Add to scene and fox array.
+  game.addZombie(fox, this);
+};
+
 Opponent.prototype.update = function(elapsed) {
   var curPosX = this.mesh.position.x;
 

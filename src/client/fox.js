@@ -712,7 +712,8 @@ loader.load('/content/fox.json', function(geo) {
 /**
  * Represents a fox.
  */
-function Fox() {
+function Fox(direction) {
+    this.direction = direction || -1;
     this.speed = 300;
     this.foxObj = new ROME.Animal(foxGeometry, true);
     this.foxObj.play(this.foxObj.availableAnimals[0], this.foxObj.availableAnimals[0]);
@@ -720,7 +721,7 @@ function Fox() {
 };
 
 Fox.prototype.update = function(elapsed) {
-    this.foxObj.mesh.position.z -= elapsed * this.speed;
+    this.foxObj.mesh.position.z += elapsed * this.speed * this.direction;
     this.foxObj.update(elapsed*1000);
 };
 
