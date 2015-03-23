@@ -1,48 +1,28 @@
 'use strict';
 
-var Fox = require('./fox');
-
-// The camera and game should never be exposed in the public API for the player
-// (browser).
-var camera = null;
-var game = null;
-
 /**
  * Represents a playable character.
  * The character is controllable with keyboard and mouse.
  */
-function Player(gam, cam, socket) {
-  camera = cam;
-  game = gam;
+function Player(id, position, direction) {
+  this.id = id;
+  this.direction = direction;
+
   this.forward = false;
   this.backward = false;
   this.left = false;
   this.right = false;
-  this.id = null;
-  this.socket = socket;
 
-  // Register the player for key events.
-  var self = this;
-  var startMoveEvent = function(keyEvent) {
-    console.log('Key down ' + keyEvent.keyCode);
-    self.socket.emit('move.start', keyEvent.keyCode);
-    self.toggleMovement(keyEvent.keyCode, true);
-  }
+  var geometry = new THREE.BoxGeometry(50, 50, 50);
+  var material = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
+  this.mesh = new THREE.Mesh(geometry, material);
+  this.mesh.position.x = position.x;
+  this.mesh.position.y = position.y;
+  this.mesh.position.z = position.z;
+}
 
-  var endMoveEvent = function(keyEvent) {
-    console.log('Key up ' + keyEvent.keyCode);
-    self.socket.emit('move.end', keyEvent.keyCode);
-    self.toggleMovement(keyEvent.keyCode, false);
-  }
-
-  var mouseClickEvent = function(ev) {
-    console.log('Click');
-    self.fire();
-  };
-
-  window.addEventListener('keydown', startMoveEvent);
-  window.addEventListener('keyup', endMoveEvent);
-  window.addEventListener('click', mouseClickEvent);
+Player.prototype.getMesh = function() {
+  return this.mesh;
 }
 
 Player.prototype.toggleMovement = function (keyCode, directionBool) {
@@ -66,41 +46,20 @@ Player.prototype.toggleMovement = function (keyCode, directionBool) {
   }
 };
 
-Player.prototype.fire = function() {
-  var fox = new Fox(-1);
-
-  // Set the fox at the camera position.
-  // The fox is "standing over the y-axis" so a little bit is
-  // subtracted from the y-axis coordinate.
-  fox.foxObj.mesh.position.x = camera.position.x;
-  fox.foxObj.mesh.position.y = camera.position.y-50;
-  fox.foxObj.mesh.position.z = camera.position.z;
-
-  // Rotate 180 degrees to face away from player.
-  fox.foxObj.mesh.rotation.y = Math.PI;
-
-  // Add to scene and fox array.
-  game.addZombie(fox, this);
-};
-
 Player.prototype.update = function (elapsed) {
-  var curPosX = camera.position.x;
+  var curPosX = this.mesh.position.x;
 
   // How much to move.
   var tr = 100.0;
 
   if (this.left) {
-    curPosX -= tr*elapsed;
+    curPosX -= tr*elapsed*this.direction;
   }
   else if (this.right) {
-    curPosX += tr*elapsed;
+    curPosX += tr*elapsed*this.direction;
   }
 
-  camera.position.x = curPosX;
-};
-
-Player.prototype.setId = function(id) {
-  this.id = id;
+  this.mesh.position.x = curPosX;
 };
 
 module.exports = Player;
