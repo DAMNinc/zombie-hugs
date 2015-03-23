@@ -3,6 +3,7 @@
 var io = require('socket.io-client');
 
 var camera = null,
+    camController = null,
     scene = null,
     renderer = null,
     gameState = null,
@@ -14,19 +15,20 @@ var camera = null,
     Fox = require('./fox'),
     Sphere = require('./sphere'),
     Terrain = require('./terrain'),
+    CamController = require('./camController'),
     socket = io();
 
 function updateGameState(elapsed) {
-  if (gameState.player != null) {
-    gameState.player.update(elapsed);
+  for (var key in gameState.players) {
+    gameState.players[key].update(elapsed);
   }
-
-  if (gameState.opponent != null) {
-    gameState.opponent.update(elapsed);
-  }
-
+  
   for (var i = 0; i < gameState.zombies.length; i++) {
     gameState.zombies[i].update(elapsed);
+  }
+
+  if (camController != null) {
+    camController.update(elapsed);
   }
 }
 
@@ -43,21 +45,69 @@ function setupEvents() {
   // Event for receiving information about zombies.
   socket.on('zombie', function(zombie) {
     console.log('Zombie added', zombie);
-    gameState.opponent.fire();
+
+    var fox = new Fox(zombie.direction);
+
+    // Set the fox at the mesh position.
+    // The fox is "standing over the y-axis" so a little bit is
+    // subtracted from the y-axis coordinate.
+    fox.foxObj.mesh.position.x = zombie.position.x;
+    fox.foxObj.mesh.position.y = zombie.position.y-50;
+    fox.foxObj.mesh.position.z = zombie.position.z;
+
+    // Rotate 180 degrees to face away from player.
+    if (zombie.direction === -1) {
+      fox.foxObj.mesh.rotation.y = Math.PI;      
+    }
+
+    var mesh = fox.getMesh();
+
+    // Add the mesh of the zombie to the scene.
+    scene.add(mesh);
+
+    // Save a reference to the zombie so it can be updated.
+    gameState.zombies.push(fox);
   });
 
   // Event for receiving player information from the server.
   // Used for signalling how the server perceives this player.
   socket.on('player', function(player) {
-    gameState.player.setId(player.id);
+    gameState.myId = player.id;
     console.log('I am player', player.id);
+
+    var p = new Player(player.id, player.position, player.direction);
+    gameState.players[player.id] = p;
+
+    camera.position.z = player.position.z;
+
+    // Rotate 180 degrees to look at the other player
+    if (player.direction === -1) {
+      camera.rotation.y = Math.PI;
+    }
+
+    camController = new CamController(camera, socket, player.direction);
   });
 
   socket.on('opponent', function(player) {
-    gameState.opponent = new Opponent(gameState.game, socket);
-    gameState.opponent.setId(player.id);
-    scene.add(gameState.opponent.mesh);
-    console.log('My opponent is', gameState.opponent.id);
+    console.log('opponent: ', player.id);
+    
+    var p = new Player(player.id, player.position, player.direction);
+    gameState.players[player.id] = p;
+
+    if (player.id !== gameState.myId) {
+      // render player
+      scene.add(p.getMesh());
+    }
+  });
+
+  socket.on('move.start', function(keyCode, playerId) {
+    console.log('Player move start', keyCode, playerId);
+    gameState.players[playerId].toggleMovement(keyCode, true);
+  });
+
+  socket.on('move.end', function(keyCode, playerId) {
+    console.log('Player move end', keyCode, playerId);
+    gameState.players[playerId].toggleMovement(keyCode, false);
   });
 }
 
@@ -68,17 +118,14 @@ function init(renderAreaId) {
   // Init scene and camera.
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
-  camera.position.z = 2000;
-  
 
   // Init timetaking
   clock = new THREE.Clock(true);
 
   // Init gamestate
   gameState = {
-    game: null,
-    player: null,
-    opponent: null,
+    myId: null,
+    players: {},
     zombies: []
   };
 
@@ -134,10 +181,6 @@ ZombieHugs.prototype.stop = function() {
   animating = false;
 };
 
-ZombieHugs.prototype.getGame = function() {
-  return game;
-};
-
 /**
  * Tells the game that a player wants to join the current game. If the game
  * already has two players, it cannot be joined as a player.
@@ -145,33 +188,7 @@ ZombieHugs.prototype.getGame = function() {
 ZombieHugs.prototype.joinGame = function(gameId) {
   // Create a new player and give the player a reference to this game.
   // The player also controls the camera of the scene.
-  gameState.player = new Player(this, camera, socket);
   socket.emit('join', {gameId: gameId});
-};
-
-/**
- * Adds the given object to the scene.
- */
-ZombieHugs.prototype.addZombie = function(zombie, player) {
-
-    var mesh = zombie.getMesh();
-
-    // Add the mesh of the zombie to the scene.
-    scene.add(mesh);
-
-    // Save a reference to the zombie so it can be updated.
-    gameState.zombies.push(zombie);
-
-    var zombie = {
-      x: mesh.position.x,
-      player: gameState.player.id
-    };
-
-    // Only emit on the socket when it is the current player that adds a
-    // zombie.
-    if (player === gameState.player) {
-      socket.emit('zombie', zombie);
-    }
 };
 
 window.ZombieHugs = new ZombieHugs();
