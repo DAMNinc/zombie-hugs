@@ -1,5 +1,7 @@
 'use strict';
 
+/* global THREE */
+
 var io = require('socket.io-client');
 
 var camera = null,
@@ -11,9 +13,7 @@ var camera = null,
     animationId = null,
     animating = false,
     Player = require('./player'),
-    Opponent = require('./opponent'),
     Fox = require('./fox'),
-    Sphere = require('./sphere'),
     Terrain = require('./terrain'),
     CamController = require('./camController'),
     socket = io();
@@ -22,7 +22,7 @@ function updateGameState(elapsed) {
   for (var key in gameState.players) {
     gameState.players[key].update(elapsed);
   }
-  
+
   for (var i = 0; i < gameState.zombies.length; i++) {
     gameState.zombies[i].update(elapsed);
   }
@@ -57,7 +57,7 @@ function setupEvents() {
 
     // Rotate 180 degrees to face away from player.
     if (zombie.direction === -1) {
-      fox.foxObj.mesh.rotation.y = Math.PI;      
+      fox.foxObj.mesh.rotation.y = Math.PI;
     }
 
     var mesh = fox.getMesh();
@@ -71,6 +71,7 @@ function setupEvents() {
 
   // Event for receiving player information from the server.
   // Used for signalling how the server perceives this player.
+  // This event will not be emitted for spectators.
   socket.on('player', function(player) {
     gameState.myId = player.id;
     console.log('I am player', player.id);
@@ -88,9 +89,10 @@ function setupEvents() {
     camController = new CamController(camera, socket, player.direction);
   });
 
+  // Event for receiving opponent information from the server.
   socket.on('opponent', function(player) {
     console.log('opponent: ', player.id);
-    
+
     var p = new Player(player.id, player.position, player.direction);
     gameState.players[player.id] = p;
 
@@ -98,6 +100,11 @@ function setupEvents() {
       // render player
       scene.add(p.getMesh());
     }
+  });
+
+  // Event for receiving spectator information from the server.
+  socket.on('spectator', function(player) {
+    console.log('spectator joined: ', player.id);
   });
 
   socket.on('move.start', function(keyCode, playerId) {
@@ -157,7 +164,7 @@ function animate() {
     // Re-animate and render.
     animationId = requestAnimationFrame(animate);
     renderer.render(scene, camera);
-  } 
+  }
 }
 
 function ZombieHugs() {}
@@ -165,7 +172,7 @@ function ZombieHugs() {}
 /**
  * Starts the game.
  */
-ZombieHugs.prototype.start = function(renderArea, gameId) {
+ZombieHugs.prototype.start = function(renderArea) {
   // Cancel the previous animation loop.
   if (animationId !== null) cancelAnimationFrame(animationId);
   init(renderArea);
@@ -173,8 +180,6 @@ ZombieHugs.prototype.start = function(renderArea, gameId) {
   setupEvents();
   animating = true;
   animate();
-  // TODO: Start as spectator, make a join button that calls this function.
-  this.joinGame(gameId);
 };
 
 ZombieHugs.prototype.stop = function() {
@@ -182,13 +187,28 @@ ZombieHugs.prototype.stop = function() {
 };
 
 /**
- * Tells the game that a player wants to join the current game. If the game
- * already has two players, it cannot be joined as a player.
+ * Tells the game that a player wants to join the current game.
  */
-ZombieHugs.prototype.joinGame = function(gameId) {
-  // Create a new player and give the player a reference to this game.
-  // The player also controls the camera of the scene.
-  socket.emit('join', {gameId: gameId});
+ZombieHugs.prototype.joinPlayer = function(gameId) {
+  // Tell the server that we would like to join as a player. This might not be
+  // possible if there are already two players so listen for a join error event
+  var self = this;
+  socket.on('join.error.full', function() {
+    // A join error means that we cannot join as player.
+    // Join as spectator instead...
+    // TODO: Add nice modal popup or something :-)
+    self.joinSpectator(gameId);
+  });
+
+  socket.emit('join.player', {gameId: gameId});
+};
+
+/**
+ * Tells the game that a player wants to join as spectator.
+ */
+ZombieHugs.prototype.joinSpectator = function(gameId) {
+  socket.emit('join.spectator', {gameId: gameId});
+  camController = new CamController(camera);
 };
 
 window.ZombieHugs = new ZombieHugs();

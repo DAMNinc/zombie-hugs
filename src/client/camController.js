@@ -2,12 +2,17 @@
 
 var camera = null;
 var socket = null;
+var isSpectator = false;
 
 var CamController = function(cam, sock, direction) {
   // TODO: Consider using THREE.FirstPersonControls?
 
   camera = cam;
   socket = sock;
+
+  // Currently, the absense of a socket object determines whether or not the
+  // cam controller is a spectator.
+  isSpectator = !sock;
 
   this.direction = direction;
 
@@ -19,7 +24,7 @@ var CamController = function(cam, sock, direction) {
       socket.emit('move.start', keyEvent.keyCode);
     }
     self.toggleMovement(keyEvent.keyCode, true);
-  }
+  };
 
   var endMoveEvent = function(keyEvent) {
     console.log('Key up ' + keyEvent.keyCode);
@@ -27,9 +32,9 @@ var CamController = function(cam, sock, direction) {
       socket.emit('move.end', keyEvent.keyCode);
     }
     self.toggleMovement(keyEvent.keyCode, false);
-  }
+  };
 
-  var mouseClickEvent = function(ev) {
+  var mouseClickEvent = function() {
     console.log('Click');
     self.fire();
   };
@@ -67,18 +72,51 @@ CamController.prototype.fire = function() {
 };
 
 CamController.prototype.update = function(elapsed) {
-  var curPosX = camera.position.x;
-
   // How much to move.
   var tr = 100.0;
+  var curPosX = camera.position.x;
 
+  // Spectators have full movement
+  if (isSpectator) {
+
+    // Because free movement is calculated differently, the position modifier
+    // has to be much lower.
+    tr = 5.0;
+
+    var rot = 0.025;
+    var curPosZ = camera.position.z;
+    var curRot = camera.rotation.y;
+
+    if (this.forward) {
+      curPosX -= Math.sin(-curRot) * -tr;
+      curPosZ -= Math.cos(-curRot) * tr;
+    }
+    else if (this.backward) {
+      curPosX -= Math.sin(curRot) * -tr;
+      curPosZ += Math.cos(curRot) * tr;
+    }
+
+    if (this.left) {
+      curRot += rot;
+    }
+    else if (this.right) {
+      curRot -= rot;
+    }
+
+    camera.position.x = curPosX;
+    camera.position.z = curPosZ;
+    camera.rotation.y = curRot;
+    return;
+  }
+
+  // If the cam controller is a player, the player direction matters and we can
+  // only move along the x-axis (at the edge of the battlefield).
   if (this.left) {
     curPosX -= tr*elapsed*this.direction;
   }
   else if (this.right) {
     curPosX += tr*elapsed*this.direction;
   }
-
   camera.position.x = curPosX;
 };
 

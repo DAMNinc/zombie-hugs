@@ -2,12 +2,20 @@
 <script src="/js/zombie.js"></script>
 <script>
 jQuery(document).ready(function() {
-    ZombieHugs.start('render-area', {{ game.id }});
-});
+    var gameId = {{ game.id }};
 
-function toggleAbout() {
-    jQuery('#about').fadeToggle();
-}
+    // Start the game
+    ZombieHugs.start('render-area');
+
+    // Join as spectator or player depending on a simple search of the browser
+    // url.
+    if (window.location.href.indexOf('spectate') >= 0) {
+      ZombieHugs.joinSpectator(gameId);
+    }
+    else {
+      ZombieHugs.joinPlayer(gameId);
+    }
+});
 </script>
 {{/section}}
 

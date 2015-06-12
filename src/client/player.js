@@ -1,5 +1,7 @@
 'use strict';
 
+/* global THREE */
+
 /**
  * Represents a playable character.
  * The character is controllable with keyboard and mouse.
@@ -23,7 +25,7 @@ function Player(id, position, direction) {
 
 Player.prototype.getMesh = function() {
   return this.mesh;
-}
+};
 
 Player.prototype.toggleMovement = function (keyCode, directionBool) {
   switch (keyCode) {
