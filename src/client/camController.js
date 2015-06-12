@@ -19,19 +19,17 @@ var CamController = function(cam, sock, direction) {
   // Register the player for key events.
   var self = this;
   var startMoveEvent = function(keyEvent) {
-    console.log('Key down ' + keyEvent.keyCode);
-    if (socket) {
+    if (self.toggleMovement(keyEvent.keyCode, true) && socket) {
+      console.log('Cam movement started', keyEvent.keyCode);
       socket.emit('move.start', keyEvent.keyCode);
     }
-    self.toggleMovement(keyEvent.keyCode, true);
   };
 
   var endMoveEvent = function(keyEvent) {
-    console.log('Key up ' + keyEvent.keyCode);
-    if (socket) {
+    if (self.toggleMovement(keyEvent.keyCode, false) && socket) {
+      console.log('Cam movement ended', keyEvent.keyCode);
       socket.emit('move.end', keyEvent.keyCode);
     }
-    self.toggleMovement(keyEvent.keyCode, false);
   };
 
   var mouseClickEvent = function() {
@@ -44,25 +42,31 @@ var CamController = function(cam, sock, direction) {
   window.addEventListener('click', mouseClickEvent);
 };
 
-CamController.prototype.toggleMovement = function (keyCode, directionBool) {
+CamController.prototype.toggleMovement = function(keyCode, directionBool) {
+  var hasChanged = false;
   switch (keyCode) {
     case 37:  // Leftarrow
     case 65:  // a key
+      hasChanged = this.left !== directionBool;
       this.left = directionBool;
       break;
     case 38:  // Up arrow
     case 87:  // w key
+      hasChanged = this.forward !== directionBool;
       this.forward = directionBool;
       break;
     case 39:  // Right arrow
     case 68:  // d key
+      hasChanged = this.right !== directionBool;
       this.right = directionBool;
       break;
     case 40:  // Down arrow
     case 83:  // s key
+      hasChanged = this.backward !== directionBool;
       this.backward = directionBool;
       break;
   }
+  return hasChanged;
 };
 
 CamController.prototype.fire = function() {
