@@ -10,7 +10,7 @@ var io = require('socket.io')(server);
 var logger = require('./lib/logger');
 var controller = require('./lib/controller');
 
-var hbs = exphbs.create({	
+var hbs = exphbs.create({
   defaultLayout: 'main',
     helpers: {
       section: function(name, options) {
@@ -27,14 +27,15 @@ app.set('view engine', 'handlebars');
 app.set('port', (process.env.PORT || 3000));
 app.use(express.static(__dirname + '/public'));
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: false }));
 
 app.get('/', function (req, res) {
 	var data = { games: controller.games };
   res.render('index', data);
 });
 
-app.get('/game', function(req, res) {
-  var gameId = controller.newGame();
+app.post('/game', function(req, res) {
+  var gameId = controller.newGame(req.body.gameName);
 	res.redirect('/game/' + gameId);
 });
 
