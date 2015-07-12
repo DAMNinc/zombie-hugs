@@ -23,8 +23,8 @@ function updateGameState(elapsed) {
     gameState.players[key].update(elapsed);
   }
 
-  for (var i = 0; i < gameState.zombies.length; i++) {
-    gameState.zombies[i].update(elapsed);
+  for (var key in gameState.zombies) {
+    gameState.zombies[key].update(elapsed);
   }
 
   if (camController != null) {
@@ -66,7 +66,7 @@ function setupEvents() {
     scene.add(mesh);
 
     // Save a reference to the zombie so it can be updated.
-    gameState.zombies.push(fox);
+    gameState.zombies[zombie.id] = fox;
   });
 
   // Event for receiving player information from the server.
@@ -116,6 +116,26 @@ function setupEvents() {
     console.log('Player move end', keyCode, playerId);
     gameState.players[playerId].toggleMovement(keyCode, false);
   });
+
+  socket.on('state', function(state) {
+    for (var key in state.zombies) {
+      var serverZombie = state.zombies[key];
+      var clientZombie = gameState.zombies[key];
+      if (!serverZombie || !clientZombie) {
+        return console.error('Server zombie or client zombie missing!');
+      }
+      clientZombie.setPosition(serverZombie.position);
+    }
+
+    for (var key in state.players) {
+      var serverPlayer = state.players[key];
+      var clientPlayer = gameState.players[key];
+      if (!serverPlayer || !clientPlayer) {
+        return console.error('Server player or client player missing!');
+      }
+      clientPlayer.setPosition(serverPlayer.position);
+    }
+  });
 }
 
 /**
@@ -133,7 +153,7 @@ function init(renderAreaId) {
   gameState = {
     myId: null,
     players: {},
-    zombies: []
+    zombies: {}
   };
 
   var terrain = new Terrain(128, 128, camera.position.y);

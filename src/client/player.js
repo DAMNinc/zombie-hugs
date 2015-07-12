@@ -27,7 +27,7 @@ Player.prototype.getMesh = function() {
   return this.mesh;
 };
 
-Player.prototype.toggleMovement = function (keyCode, directionBool) {
+Player.prototype.toggleMovement = function(keyCode, directionBool) {
   switch (keyCode) {
     case 37:  // Leftarrow
     case 65:  // a key
@@ -48,7 +48,7 @@ Player.prototype.toggleMovement = function (keyCode, directionBool) {
   }
 };
 
-Player.prototype.update = function (elapsed) {
+Player.prototype.update = function(elapsed) {
   var curPosX = this.mesh.position.x;
 
   // How much to move.
@@ -62,6 +62,10 @@ Player.prototype.update = function (elapsed) {
   }
 
   this.mesh.position.x = curPosX;
+};
+
+Player.prototype.setPosition = function(position) {
+  this.mesh.position.set(position.x, position.y, position.z);
 };
 
 module.exports = Player;
