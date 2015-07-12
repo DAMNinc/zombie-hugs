@@ -6,7 +6,7 @@
  * Represents a playable character.
  * The character is controllable with keyboard and mouse.
  */
-function Player(id, position, direction) {
+function Player(id, position, direction, playerMesh) {
   this.id = id;
   this.direction = direction;
 
@@ -15,12 +15,13 @@ function Player(id, position, direction) {
   this.left = false;
   this.right = false;
 
-  var geometry = new THREE.BoxGeometry(50, 50, 50);
-  var material = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
-  this.mesh = new THREE.Mesh(geometry, material);
+  this.mesh = playerMesh;
+
   this.mesh.position.x = position.x;
-  this.mesh.position.y = position.y;
+  this.mesh.position.y = position.y - 40;
   this.mesh.position.z = position.z;
+
+  console.log('Player created');
 }
 
 Player.prototype.getMesh = function() {

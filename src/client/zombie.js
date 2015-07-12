@@ -9,6 +9,7 @@ var camera = null,
     scene = null,
     renderer = null,
     gameState = null,
+    models = null,    
     clock = null,
     animationId = null,
     animating = false,
@@ -16,6 +17,7 @@ var camera = null,
     Fox = require('./fox'),
     Terrain = require('./terrain'),
     CamController = require('./camController'),
+    Models = require('./models'),
     socket = io();
 
 function updateGameState(elapsed) {
@@ -46,7 +48,7 @@ function setupEvents() {
   socket.on('zombie', function(zombie) {
     console.log('Zombie added', zombie);
 
-    var fox = new Fox(zombie.direction);
+    var fox = new Fox(zombie.direction, models.getZombie().geometry);
 
     // Set the fox at the mesh position.
     // The fox is "standing over the y-axis" so a little bit is
@@ -76,7 +78,7 @@ function setupEvents() {
     gameState.myId = player.id;
     console.log('I am player', player.id);
 
-    var p = new Player(player.id, player.position, player.direction);
+    var p = new Player(player.id, player.position, player.direction, models.getPlayer(player.direction));
     gameState.players[player.id] = p;
 
     camera.position.z = player.position.z;
@@ -93,7 +95,7 @@ function setupEvents() {
   socket.on('opponent', function(player) {
     console.log('opponent: ', player.id);
 
-    var p = new Player(player.id, player.position, player.direction);
+    var p = new Player(player.id, player.position, player.direction, models.getPlayer(player.direction));
     gameState.players[player.id] = p;
 
     if (player.id !== gameState.myId) {
@@ -122,9 +124,18 @@ function setupEvents() {
  * Initializes the scene, renderer and game state.
  */
 function init(renderAreaId) {
+  // load models
+  models = new Models();
+
   // Init scene and camera.
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
+
+  var hemiLight = new THREE.HemisphereLight( 0xffffff, 0xffffff, 10 );
+  hemiLight.color.setHSL( 0.6, 1, 0.6 );
+  hemiLight.groundColor.setHSL( 0.095, 1, 0.75 );
+  hemiLight.position.set( 0, 500, 0 );
+  scene.add( hemiLight );
 
   // Init timetaking
   clock = new THREE.Clock(true);
@@ -167,29 +178,10 @@ function animate() {
   }
 }
 
-function ZombieHugs() {}
-
-/**
- * Starts the game.
- */
-ZombieHugs.prototype.start = function(renderArea) {
-  // Cancel the previous animation loop.
-  if (animationId !== null) cancelAnimationFrame(animationId);
-  init(renderArea);
-  gameState.game = this;
-  setupEvents();
-  animating = true;
-  animate();
-};
-
-ZombieHugs.prototype.stop = function() {
-  animating = false;
-};
-
 /**
  * Tells the game that a player wants to join the current game.
  */
-ZombieHugs.prototype.joinPlayer = function(gameId) {
+function joinPlayer(gameId) {
   // Tell the server that we would like to join as a player. This might not be
   // possible if there are already two players so listen for a join error event
   var self = this;
@@ -206,9 +198,51 @@ ZombieHugs.prototype.joinPlayer = function(gameId) {
 /**
  * Tells the game that a player wants to join as spectator.
  */
-ZombieHugs.prototype.joinSpectator = function(gameId) {
+function joinSpectator(gameId) {
   socket.emit('join.spectator', {gameId: gameId});
   camController = new CamController(camera);
+};
+
+function ZombieHugs() {}
+
+/**
+ * Starts the game.
+ */
+ZombieHugs.prototype.start = function(params) {
+  // Cancel the previous animation loop.
+  if (animationId !== null) cancelAnimationFrame(animationId);
+  init(params.renderAreaId);
+
+  var self = this;
+
+  // wait until models have been loaded
+    
+  var checkReady = function() {
+    if (!models.isReady()) {
+      console.log("Waiting for models...");
+      setTimeout(checkReady, 1000);
+    } else {
+      console.log("Models loaded");
+      gameState.game = self;
+      setupEvents();
+      animating = true;
+      animate();
+
+      // Join as spectator or player
+      if (params.isSpectator) {
+        joinSpectator(params.gameId);
+      } else {
+        joinPlayer(params.gameId);
+      }
+    }
+  };
+
+  checkReady();
+
+};
+
+ZombieHugs.prototype.stop = function() {
+  animating = false;
 };
 
 window.ZombieHugs = new ZombieHugs();
