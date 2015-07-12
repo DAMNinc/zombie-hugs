@@ -6,11 +6,17 @@
 
 <div class="row">
 	<div class="col-sm-4">
-	<center>
-		
-		<a href="/game" class="btn btn-primary btn-raised">
-		  Start new game!
-		</a>
+		<div class="bs-component text-center">
+        <form method="POST" action="/game">
+            <div class="form-group">
+                <label for="">Game name (optional)</label>
+                <input type="text" name="gameName" class="form-control">
+            </div>
+		    <button type="submit" class="btn btn-primary btn-raised">
+		      Start new game!
+		    </button>
+        </form>
+        </div>
 
 		<div class="bs-component">
 			<blockquote>
@@ -18,7 +24,6 @@
 				<small>John Carmack in <cite title="Time Magazine">TIME</cite></small>
 			</blockquote>
 		</div>
-	</center>
 	</div>
 	<div class="col-sm-8">
 		<div class="bs-component">
@@ -31,8 +36,8 @@
 						</a>						
 					</div>
 					<div class="row-content">
-						<div class="least-content">[Start time]</div>
-						<div class="list-group-item-heading">[X's game]</div>
+                        <div class="least-content">{{ startTime }}</div>
+                        <div class="list-group-item-heading">{{ gameName }}</div>
 						<p class="list-group-item-text">
 							<a href="/game/{{id}}" class="btn btn-success btn-raised"><span class="glyphicon glyphicon-screenshot" aria-hidden="true"></span>&nbsp;&nbsp;Join</a>
 							<a href="/game/{{id}}?spectate=1" class="btn btn-info btn-raised"><span class="glyphicon glyphicon-eye-open" aria-hidden="true"></span>&nbsp;&nbsp;Spectate</a>
