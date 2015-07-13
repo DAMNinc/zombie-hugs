@@ -702,20 +702,13 @@ function randomizeColors( colors, variations ) {
 
 };
 
-var loader = new THREE.JSONLoader(true);
-var foxGeometry = null;
-loader.load('/content/fox.json', function(geo) {
-    console.log('Fox geometry loaded');
-    foxGeometry = geo;
-});
-
 /**
  * Represents a fox.
  */
-function Fox(direction) {
+function Fox(direction, geometry) {
     this.direction = direction || -1;
     this.speed = 300;
-    this.foxObj = new ROME.Animal(foxGeometry, true);
+    this.foxObj = new ROME.Animal(geometry, true);
     this.foxObj.play(this.foxObj.availableAnimals[0], this.foxObj.availableAnimals[0]);
     this.foxObj.animalA.timeScale = this.foxObj.animalB.timeScale = 0.9;
 };

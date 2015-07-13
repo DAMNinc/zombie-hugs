@@ -3,18 +3,14 @@
 <script>
 jQuery(document).ready(function() {
     var gameId = {{ game.id }};
+    var params = {
+        gameId: gameId,
+        isSpectator: window.location.href.indexOf('spectate') >= 0, // spectator depends on a simple search of the browser url.
+        renderAreaId: 'render-area'
+    };
 
     // Start the game
-    ZombieHugs.start('render-area');
-
-    // Join as spectator or player depending on a simple search of the browser
-    // url.
-    if (window.location.href.indexOf('spectate') >= 0) {
-      ZombieHugs.joinSpectator(gameId);
-    }
-    else {
-      ZombieHugs.joinPlayer(gameId);
-    }
+    ZombieHugs.start(params);
 });
 </script>
 {{/section}}
