@@ -2,23 +2,23 @@
 
 /* global THREE */
 
-var io = require('socket.io-client');
+const io = require('socket.io-client');
 
-var camera = null,
-    camController = null,
-    scene = null,
-    renderer = null,
-    gameState = null,
-    models = null,    
-    clock = null,
-    animationId = null,
-    animating = false,
-    Player = require('./player'),
-    Fox = require('./fox'),
-    Terrain = require('./terrain'),
-    CamController = require('./camController'),
-    Models = require('./models'),
-    socket = io();
+let camera = null,
+  camController = null,
+  scene = null,
+  renderer = null,
+  gameState = null,
+  models = null,
+  clock = null,
+  animationId = null,
+  animating = false,
+  Player = require('./player'),
+  Fox = require('./fox'),
+  Terrain = require('./terrain'),
+  CamController = require('./camController'),
+  Models = require('./models'),
+  socket = io();
 
 function updateGameState(elapsed) {
   for (var key in gameState.players) {
@@ -236,7 +236,7 @@ ZombieHugs.prototype.start = function(params) {
   var self = this;
 
   // wait until models have been loaded
-    
+
   var checkReady = function() {
     if (!models.isReady()) {
       console.log("Waiting for models...");
