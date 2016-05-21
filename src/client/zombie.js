@@ -233,16 +233,18 @@ function animate() {
 function joinPlayer(gameId) {
   // Tell the server that we would like to join as a player. This might not be
   // possible if there are already two players so listen for a join error event
-  var self = this;
   socket.on('join.error.full', function() {
     // A join error means that we cannot join as player.
     // Join as spectator instead...
-    // TODO: Add nice modal popup or something :-)
-    self.joinSpectator(gameId);
+    joinSpectator(gameId);
+
+    // Tell the window about it. Someone might be listening :-)
+    var ev = new Event('join.spectator.full');
+    window.dispatchEvent(ev);
   });
 
   socket.emit('join.player', {gameId: gameId});
-};
+}
 
 /**
  * Tells the game that a player wants to join as spectator.
@@ -250,7 +252,7 @@ function joinPlayer(gameId) {
 function joinSpectator(gameId) {
   socket.emit('join.spectator', {gameId: gameId});
   camController = new CamController(camera);
-};
+}
 
 function ZombieHugs() {}
 
@@ -287,7 +289,6 @@ ZombieHugs.prototype.start = function(params) {
   };
 
   checkReady();
-
 };
 
 ZombieHugs.prototype.stop = function() {

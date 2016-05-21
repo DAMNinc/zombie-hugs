@@ -4,12 +4,32 @@
     <title>{{ title }}</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.2/css/bootstrap.min.css" rel="stylesheet">
     <link href="/css/game.css" rel="stylesheet">
 </head>
 <body>
     <div id="render-area">
     </div>
+
+    <div class="modal fade" id="full-modal" tabindex="-1" role="dialog">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="myModalLabel">Game is Full</h4>
+          </div>
+          <div class="modal-body">
+            The game is full, so you will join as a spectator. Enjoy :-)
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="//ajax.googleapis.com/ajax/libs/jquery/2.2.3/jquery.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.2/js/bootstrap.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/three.js/r71/three.min.js"></script>
     <script src="/js/zombie.js"></script>
     <script>
@@ -20,6 +40,10 @@
             isSpectator: window.location.href.indexOf('spectate') >= 0, // spectator depends on a simple search of the browser url.
             renderAreaId: 'render-area'
         };
+
+        window.addEventListener('join.spectator.full', function() {
+          $('#full-modal').modal();
+        });
     
         // Start the game
         ZombieHugs.start(params);
