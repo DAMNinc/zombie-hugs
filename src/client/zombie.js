@@ -43,6 +43,12 @@ function handleResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+function removeZombie(zombieId) {
+  var zombie = gameState.zombies[zombieId];
+  scene.remove(zombie.getMesh());
+  delete gameState.zombies[zombieId];
+}
+
 function setupEvents() {
   // Event for receiving information about zombies.
   socket.on('zombie', function(zombie) {
@@ -147,6 +153,19 @@ function setupEvents() {
       }
       clientPlayer.setPosition(serverPlayer.position);
     }
+  });
+
+  socket.on('zombie.collision', function(zombieId1, zombieId2) {
+    console.log('Collision!', zombieId1, zombieId2);
+    console.log(zombieId1, zombieId2);
+    removeZombie(zombieId1);
+    removeZombie(zombieId2);
+  });
+
+  socket.on('zombie.out-of-bounds', function(zombieId) {
+    console.log('Out of bounds!', zombieId);
+    console.log(zombieId);
+    removeZombie(zombieId);
   });
 }
 
