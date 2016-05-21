@@ -705,10 +705,12 @@ function randomizeColors( colors, variations ) {
 /**
  * Represents a fox.
  */
-function Fox(direction, geometry) {
+function Fox(direction, zombieModel) {
+	this.offset = zombieModel.offset;
+
     this.direction = direction || -1;
     this.speed = 300;
-    this.foxObj = new ROME.Animal(geometry, true);
+    this.foxObj = new ROME.Animal(zombieModel.model.geometry, true);
     this.foxObj.play(this.foxObj.availableAnimals[0], this.foxObj.availableAnimals[0]);
     this.foxObj.animalA.timeScale = this.foxObj.animalB.timeScale = 0.9;
 };
@@ -727,7 +729,7 @@ Fox.prototype.getPosition = function() {
 };
 
 Fox.prototype.setPosition = function(position) {
-  this.foxObj.mesh.position.set(position.x, position.y-50, position.z);
+  this.foxObj.mesh.position.set(position.x + this.offset.x, position.y-50 + this.offset.y, position.z + + this.offset.z);
 };
 
 module.exports = Fox;
