@@ -706,7 +706,7 @@ function randomizeColors( colors, variations ) {
  * Represents a fox.
  */
 function Fox(direction, zombieModel) {
-	this.offset = zombieModel.offset;
+    this.offset = zombieModel.offset;
 
     this.direction = direction || -1;
     this.speed = 300;
