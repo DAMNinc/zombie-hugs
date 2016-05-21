@@ -729,7 +729,7 @@ Fox.prototype.getPosition = function() {
 };
 
 Fox.prototype.setPosition = function(position) {
-  this.foxObj.mesh.position.set(position.x + this.offset.x, position.y-50 + this.offset.y, position.z + + this.offset.z);
+  this.foxObj.mesh.position.set(position.x + this.offset.x, position.y-50 + this.offset.y, position.z + this.offset.z);
 };
 
 module.exports = Fox;

@@ -66,7 +66,7 @@ Player.prototype.update = function(elapsed) {
 };
 
 Player.prototype.setPosition = function(position) {
-  this.mesh.position.set(position.x, position.y, position.z);
+  this.mesh.position.set(position.x, position.y-40, position.z);
 };
 
 module.exports = Player;
