@@ -4,7 +4,7 @@
  */
 
 
-ROME = {};
+ROME = window.ROME = {};
 
 
 // animal

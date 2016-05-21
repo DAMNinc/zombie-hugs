@@ -1,0 +1,126 @@
+{{#section 'head' }}
+<script src="/js/zombie.js"></script>
+<style>
+    canvas {
+        width: 100%;
+    }
+</style>
+<script>
+jQuery(document).ready(function() {
+    var renderAreaId = "render-area",
+        jsonloader = new THREE.JSONLoader(true),
+        modelPaths = [
+            '/content/flamingo.json',
+            '/content/fox.json',
+            '/content/horse.json'
+        ],
+        models = [],
+        scene = null,
+        zombie = null;
+    
+    function loadModel(path) {
+        var $deferred = jQuery.Deferred();
+        jsonloader.load(path, function(geo, mat) {
+            var model = {
+                geometry: geo,
+                material: mat
+            };
+            models.push(model);
+            $deferred.resolve(model);
+        }, null, $deferred.reject);
+        return $deferred.promise();
+    }
+    $.when.apply(null, modelPaths.map(loadModel)).then(init);
+        
+   function init() {
+        scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
+
+        var clock = new THREE.Clock(true);
+        var renderer = new THREE.WebGLRenderer();
+        document.getElementById(renderAreaId).appendChild( renderer.domElement );
+
+        camera.position.y = 25;
+        camera.position.z = 150;
+
+        camera.aspect = renderer.domElement.clientWidth / renderer.domElement.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(renderer.domElement.clientWidth, renderer.domElement.clientHeight);
+
+        var render = function () {
+            requestAnimationFrame( render );
+
+            var elapsed = clock.getDelta();
+            if (zombie) {
+                zombie.mesh.rotation.y += 0.01;
+                zombie.update(elapsed*1000); // TODO Get the fox running
+            }
+            
+            renderer.render(scene, camera);
+        };
+
+        render();
+        
+        $('a.zombie').each(function(i, zombieAnchor) {
+            $(zombieAnchor).click(function(){
+                $("a.zombie").removeClass("active");
+                $(this).addClass("active");
+                setZombie(i);
+            });
+        });
+   }
+   
+   function setZombie(zombieId) {
+       if (zombie) {
+           scene.remove(zombie.mesh);
+       }
+        zombie = new ROME.Animal(models[zombieId].geometry, true);
+        zombie.play(zombie.availableAnimals[0], zombie.availableAnimals[0]);
+        zombie.animalA.timeScale = zombie.animalB.timeScale = 0.9;
+    
+        // Add the mesh of the zombie to the scene.
+        scene.add(zombie.mesh);
+   }
+});
+</script>
+{{/section}}
+<div class="container">
+	<div class="row">
+		<div class="col-sm-12">
+		<h3>Zombies</h3>
+		</div>
+	</div>
+    <div class="row">
+        <div class="col-sm-3">
+            <div class="list-group">
+                <a href="#" class="list-group-item zombie">
+                    <h4 class="list-group-item-heading">Flamingo</h4>
+                    <p class="list-group-item-text">Fast and high flying</p>
+                </a>
+            </div>
+            <div class="list-group">
+                <a href="#" class="list-group-item zombie active">
+                    <h4 class="list-group-item-heading">Fox</h4>
+                    <p class="list-group-item-text">Silent and almost invisible</p>
+                </a>
+            </div>
+            <div class="list-group">
+                <a href="#" class="list-group-item zombie">
+                    <h4 class="list-group-item-heading">Horse</h4>
+                    <p class="list-group-item-text">Bigger but slower</p>
+                </a>
+            </div>
+        </div>
+        <div class="col-sm-5" id="render-area">Preview
+        </div>
+        <div class="col-sm-4">
+            <h4>Key features</h4>
+            <ul>
+                <li>Feature #1</li>
+                <li>Feature #2</li>
+                <li>Feature #3</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
