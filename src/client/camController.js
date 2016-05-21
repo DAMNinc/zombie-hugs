@@ -16,20 +16,28 @@ var CamController = function(cam, sock, direction) {
 
   this.direction = direction;
 
-  // Register the player for key events.
   var self = this;
-  var startMoveEvent = function(keyEvent) {
-    if (self.toggleMovement(keyEvent.keyCode, true) && socket) {
-      console.log('Cam movement started', keyEvent.keyCode);
-      socket.emit('move.start', keyEvent.keyCode);
+  var startMovement = function(code) {
+    if (self.toggleMovement(code, true) && socket) {
+      console.log('Cam movement started', code);
+      socket.emit('move.start', code);
     }
   };
 
-  var endMoveEvent = function(keyEvent) {
-    if (self.toggleMovement(keyEvent.keyCode, false) && socket) {
-      console.log('Cam movement ended', keyEvent.keyCode);
-      socket.emit('move.end', keyEvent.keyCode);
+  var endMovement = function(code) {
+    if (self.toggleMovement(code, false) && socket) {
+      console.log('Cam movement ended', code);
+      socket.emit('move.end', code);
     }
+  };
+
+  // Register the player for key events.
+  var keyDownEvent = function(keyEvent) {
+    startMovement(keyEvent.keyCode);
+  };
+
+  var keyUpEvent = function(keyEvent) {
+    endMovement(keyEvent.keyCode);
   };
 
   var mouseClickEvent = function() {
@@ -37,14 +45,43 @@ var CamController = function(cam, sock, direction) {
     self.fire();
   };
 
-  window.addEventListener('keydown', startMoveEvent);
-  window.addEventListener('keyup', endMoveEvent);
+  var touchStart = function(e) {
+    // Prevent mouse clicks...
+    e.preventDefault();
+
+    if (e.touches.length > 0) {
+      if (e.touches[0].clientX < window.innerWidth / 3) {
+        // Simulate left arrow
+        startMovement(-1);
+      } else if (e.touches[0].clientX > window.innerWidth - window.innerWidth / 3) {
+        // Simulate right arrow
+        startMovement(1);
+      } else {
+        console.log('Touch "click"');
+        self.fire();
+      }
+    }
+  }
+
+  var touchEnd = function(e) {
+    if (e.touches.length === 0) {
+      // Just stop movement in both directions :-)
+      endMovement(-1);
+      endMovement(1);
+    }
+  };
+
+  window.addEventListener('keydown', keyDownEvent);
+  window.addEventListener('keyup', keyUpEvent);
   window.addEventListener('click', mouseClickEvent);
+  window.addEventListener('touchstart', touchStart);
+  window.addEventListener('touchend', touchEnd);
 };
 
 CamController.prototype.toggleMovement = function(keyCode, directionBool) {
   var hasChanged = false;
   switch (keyCode) {
+    case -1:  // Custom keycode for touch
     case 37:  // Leftarrow
     case 65:  // a key
       hasChanged = this.left !== directionBool;
@@ -55,6 +92,7 @@ CamController.prototype.toggleMovement = function(keyCode, directionBool) {
       hasChanged = this.forward !== directionBool;
       this.forward = directionBool;
       break;
+    case 1:   // Custom keycode for touch
     case 39:  // Right arrow
     case 68:  // d key
       hasChanged = this.right !== directionBool;
