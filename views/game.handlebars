@@ -1,28 +1,29 @@
-{{#section 'head' }}
-<script src="/js/zombie.js"></script>
-<script>
-jQuery(document).ready(function() {
-    var gameId = {{ game.id }};
-    var params = {
-        gameId: gameId,
-        isSpectator: window.location.href.indexOf('spectate') >= 0, // spectator depends on a simple search of the browser url.
-        renderAreaId: 'render-area'
-    };
-
-    // Start the game
-    ZombieHugs.start(params);
-});
-</script>
-{{/section}}
-
-
-<div class="container">
-	<div class="row">
-		<div class="col-sm-12">
-		Playing game with ID {{ game.id }}
-		</div>
-	</div>
-</div>
-
-<div id="render-area">
-</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>{{ title }}</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="/css/game.css" rel="stylesheet">
+</head>
+<body>
+    <div id="render-area">
+    </div>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/2.2.3/jquery.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/three.js/r71/three.min.js"></script>
+    <script src="/js/zombie.js"></script>
+    <script>
+    jQuery(document).ready(function() {
+        var gameId = {{ game.id }};
+        var params = {
+            gameId: gameId,
+            isSpectator: window.location.href.indexOf('spectate') >= 0, // spectator depends on a simple search of the browser url.
+            renderAreaId: 'render-area'
+        };
+    
+        // Start the game
+        ZombieHugs.start(params);
+    });
+    </script>
+</body>
+</html>
