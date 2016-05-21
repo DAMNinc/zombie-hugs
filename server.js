@@ -44,7 +44,7 @@ app.get('/game/:game', function(req, res) {
     logger.verbose('Tried to join game that does not exist');
 		res.redirect('/');
 	} else {
-    res.render('game', { game: controller.games[req.params.game] });
+    res.render('game', { layout: false, game: controller.games[req.params.game] });
 	}
 });
 
