@@ -48,14 +48,24 @@ function setupEvents() {
   socket.on('zombie', function(zombie) {
     console.log('Zombie added', zombie);
 
-    var fox = new Fox(zombie.direction, models.getZombie().geometry);
+    var zombieModel;
+    var rand = Math.random();
+    if (rand < 0.33) {
+      zombieModel = models.getZombie();
+    } else if (rand < 0.66) {
+      zombieModel = models.getHorse();
+    } else {
+      zombieModel = models.getFlamingo();
+    }
+
+      var fox = new Fox(zombie.direction, zombieModel);
 
     // Set the fox at the mesh position.
     // The fox is "standing over the y-axis" so a little bit is
     // subtracted from the y-axis coordinate.
-    fox.foxObj.mesh.position.x = zombie.position.x;
-    fox.foxObj.mesh.position.y = zombie.position.y-50;
-    fox.foxObj.mesh.position.z = zombie.position.z;
+    fox.foxObj.mesh.position.x = zombie.position.x + zombieModel.offset.x;
+    fox.foxObj.mesh.position.y = zombie.position.y-50 + zombieModel.offset.y;
+    fox.foxObj.mesh.position.z = zombie.position.z + zombieModel.offset.z;
 
     // Rotate 180 degrees to face away from player.
     if (zombie.direction === -1) {

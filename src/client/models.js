@@ -2,14 +2,22 @@
 
 function Models() {
   this.missing = 0;
-  this.zombie = null;
+  this.fox = null;
+  this.flamingo = null;
+  this.horse = null;
   this.player = null;
 
   var self = this;
   var jsonloader = new THREE.JSONLoader(true);
 
   load(this, jsonloader, '/content/fox.json', function(geo) {
-    self.zombie = geo;
+    self.fox = geo;
+  });
+  load(this, jsonloader, '/content/flamingo.json', function(geo) {
+    self.flamingo = geo;
+  });
+  load(this, jsonloader, '/content/horse.json', function(geo) {
+    self.horse = geo;
   });
   load(this, jsonloader, '/content/monster.json', function(geo) {
     self.player = geo;
@@ -20,7 +28,13 @@ Models.prototype.isReady = function() {
   return this.missing == 0;
 };
 Models.prototype.getZombie = function() {
-  return this.zombie;
+  return { model: this.fox, offset: { x: 0, y: 0, z: 0 } };
+};
+Models.prototype.getFlamingo = function() {
+  return { model: this.flamingo, offset: { x: 0, y: 50, z: 0 } };
+};
+Models.prototype.getHorse = function() {
+  return { model: this.horse, offset: { x: 0, y: -10, z: 0 } };
 };
 Models.prototype.getPlayer = function(direction) {  
   var material = new THREE.MeshFaceMaterial( this.player.materials );
