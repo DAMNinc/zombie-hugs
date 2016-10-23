@@ -715,6 +715,10 @@ function Fox(direction, zombieModel) {
     this.foxObj.animalA.timeScale = this.foxObj.animalB.timeScale = 0.9;
 };
 
+Fox.prototype.setSpeed = function(speed) {
+	this.speed = speed;
+}
+
 Fox.prototype.update = function(elapsed) {
     this.foxObj.mesh.position.z += elapsed * this.speed * this.direction;
     this.foxObj.update(elapsed*1000);

@@ -65,31 +65,57 @@ function getZombieModelFromCode(code) {
   return zombieModel;
 }
 
+function createFoxFromModel(direction, position, model) {
+    var fox = new Fox(direction, model);
+
+    // Set the fox at the mesh position.
+    // The fox is "standing over the y-axis" so a little bit is
+    // subtracted from the y-axis coordinate.
+    fox.foxObj.mesh.position.x = position.x + model.offset.x;
+    fox.foxObj.mesh.position.y = position.y-50 + model.offset.y;
+    fox.foxObj.mesh.position.z = position.z + model.offset.z;
+
+    // Rotate 180 degrees to face away from player.
+    if (direction === -1) {
+      fox.foxObj.mesh.rotation.y = Math.PI;
+    }
+
+    return fox;
+}
+
+function setWeapon(player, code) {
+  console.log('called for ' + player.id);
+  var zombieModel = getZombieModelFromCode(code);
+
+  var startPosition = {x : player.getMesh().position.x, y: player.getMesh().position.y, z: player.getMesh().position.z };
+  startPosition.z += player.getDirection() * -1 * 100;
+  startPosition.y += 50;
+  startPosition.x += player.getDirection() * -1 * 25;
+
+  var currentWeaponMesh = player.getCurrentWeapon();
+  if (currentWeaponMesh) {
+    scene.remove(currentWeaponMesh.getMesh());
+  }
+
+  var fox = createFoxFromModel(player.getDirection() * -1, startPosition, zombieModel);
+  fox.setSpeed(0);
+  fox.getMesh().scale.set(0.25,0.25,0.25);
+  scene.add(fox.getMesh());
+
+  player.setWeapon(code, fox);
+}
+
 function setupEvents() {
   // Event for receiving information about zombies.
   socket.on('zombie', function(zombie, playerId) {
     console.log('Zombie added for ' + playerId, zombie);
 
-    var zombieModel = getZombieModelFromCode(gameState.players[playerId].getWeapon());
+    var zombieModel = getZombieModelFromCode(gameState.players[playerId].getWeaponCode());
 
-    var fox = new Fox(zombie.direction, zombieModel);
-
-    // Set the fox at the mesh position.
-    // The fox is "standing over the y-axis" so a little bit is
-    // subtracted from the y-axis coordinate.
-    fox.foxObj.mesh.position.x = zombie.position.x + zombieModel.offset.x;
-    fox.foxObj.mesh.position.y = zombie.position.y-50 + zombieModel.offset.y;
-    fox.foxObj.mesh.position.z = zombie.position.z + zombieModel.offset.z;
-
-    // Rotate 180 degrees to face away from player.
-    if (zombie.direction === -1) {
-      fox.foxObj.mesh.rotation.y = Math.PI;
-    }
-
-    var mesh = fox.getMesh();
+    var fox = createFoxFromModel(zombie.direction, zombie.position, zombieModel);
 
     // Add the mesh of the zombie to the scene.
-    scene.add(mesh);
+    scene.add(fox.getMesh());
 
     // Save a reference to the zombie so it can be updated.
     gameState.zombies[zombie.id] = fox;
@@ -103,6 +129,8 @@ function setupEvents() {
     console.log('I am player', player.id);
 
     var p = new Player(player.id, player.position, player.direction, models.getPlayer(player.direction));
+    setWeapon(p, 1);
+
     gameState.players[player.id] = p;
 
     camera.position.z = player.position.z;
@@ -120,6 +148,8 @@ function setupEvents() {
     console.log('opponent: ', player.id);
 
     var p = new Player(player.id, player.position, player.direction, models.getPlayer(player.direction));
+    setWeapon(p, player.weaponCode);
+
     gameState.players[player.id] = p;
 
     if (player.id !== gameState.myId) {
@@ -178,7 +208,9 @@ function setupEvents() {
 
   socket.on('weapon.set', function(code, playerId) {
     console.log(playerId + ' switch to ' + code);
-    gameState.players[playerId].setWeapon(code);
+    var player = gameState.players[playerId];
+
+    setWeapon(player, code);
   });
 }
 
