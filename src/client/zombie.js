@@ -64,7 +64,7 @@ function setupEvents() {
       zombieModel = models.getFlamingo();
     }
 
-      var fox = new Fox(zombie.direction, zombieModel);
+    var fox = new Fox(zombie.direction, zombieModel);
 
     // Set the fox at the mesh position.
     // The fox is "standing over the y-axis" so a little bit is
