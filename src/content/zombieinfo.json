@@ -1,0 +1,31 @@
+{
+    "zombies": [
+        {
+            "name": "Flamingo",
+            "shortDescription": "Fast and high flying",
+            "features": [
+                "Flamingo feature 1",
+                "Flamingo feature 2"
+            ],
+            "modelPath": "/content/flamingo.json"
+        },
+        {
+            "name": "Fox",
+            "shortDescription": "Slient and almost invisible",
+            "features": [
+                "Fox feature 1",
+                "Fox feature 2"
+            ],
+            "modelPath": "/content/fox.json"
+        },
+        {
+            "name": "Horse",
+            "shortDescription": "Bigger but slower",
+            "features": [
+                "Horse feature 1",
+                "Horse feature 2"
+            ],
+            "modelPath": "/content/horse.json"
+        }
+    ]
+}

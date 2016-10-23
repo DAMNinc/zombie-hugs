@@ -35,7 +35,7 @@ gulp.task('css', () => {
 });
 
 gulp.task('content', () => {
-  return gulp.src(['./src/content/*'])
+  return gulp.src(['./src/content/**'])
     .pipe(gulp.dest('./public/content'));
 });
 
