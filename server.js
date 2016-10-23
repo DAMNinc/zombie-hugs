@@ -48,6 +48,10 @@ app.get('/game/:game', function(req, res) {
 	}
 });
 
+app.get('/zombies', function(req, res) {
+  res.render('zombies');
+});
+
 io.on('connection', function(socket) {
   controller.setupSocket(socket);
 });

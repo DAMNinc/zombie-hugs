@@ -1,0 +1,30 @@
+{{#section 'head' }}
+<script src="/js/zombie.js" defer></script>
+<script src="/content/js/gallery.js" defer></script>
+<style>
+    canvas {
+        width: 100%;
+    }
+</style>
+{{/section}}
+<div class="container">
+	<div class="row">
+		<div class="col-sm-12">
+		    <h3>Zombies</h3>
+		</div>
+	</div>
+    <div class="row">
+        <div class="col-sm-3 zombie-list">
+            <!-- Zombies are loaded from json file -->
+        </div>
+        <div class="col-sm-5" id="render-area">Preview
+        </div>
+        <div class="col-sm-4">
+            <h4>Key features</h4>
+            <ul class="zombie-features">
+                <!-- Features inserted run-time by jQuery -->
+            </ul>
+        </div>
+    </div>
+</div>
+
