@@ -49,20 +49,28 @@ function removeZombie(zombieId) {
   delete gameState.zombies[zombieId];
 }
 
+function getZombieModelFromCode(code) {
+  var zombieModel;
+  switch (code) {
+    case 1:
+      zombieModel = models.getZombie();
+      break;
+    case 2:
+      zombieModel = models.getHorse();
+      break;
+    case 3:
+      zombieModel = models.getFlamingo();
+      break;
+  }
+  return zombieModel;
+}
+
 function setupEvents() {
   // Event for receiving information about zombies.
-  socket.on('zombie', function(zombie) {
-    console.log('Zombie added', zombie);
+  socket.on('zombie', function(zombie, playerId) {
+    console.log('Zombie added for ' + playerId, zombie);
 
-    var zombieModel;
-    var rand = Math.random();
-    if (rand < 0.33) {
-      zombieModel = models.getZombie();
-    } else if (rand < 0.66) {
-      zombieModel = models.getHorse();
-    } else {
-      zombieModel = models.getFlamingo();
-    }
+    var zombieModel = getZombieModelFromCode(gameState.players[playerId].getWeapon());
 
     var fox = new Fox(zombie.direction, zombieModel);
 
@@ -166,6 +174,11 @@ function setupEvents() {
     console.log('Out of bounds!', zombieId);
     console.log(zombieId);
     removeZombie(zombieId);
+  });
+
+  socket.on('weapon.set', function(code, playerId) {
+    console.log(playerId + ' switch to ' + code);
+    gameState.players[playerId].setWeapon(code);
   });
 }
 
