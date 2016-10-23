@@ -6,7 +6,7 @@
  * Represents a playable character.
  * The character is controllable with keyboard and mouse.
  */
-function Player(id, position, direction, playerMesh) {
+function Player(id, position, direction, playerMesh, weapon) {
   this.id = id;
   this.direction = direction;
 
@@ -17,7 +17,8 @@ function Player(id, position, direction, playerMesh) {
 
   this.mesh = playerMesh;
   
-  this.weapon = 1;
+  this.weaponCode = 1;
+  this.weapon = null;
 
   this.mesh.position.x = position.x;
   this.mesh.position.y = position.y - 40;
@@ -29,6 +30,10 @@ function Player(id, position, direction, playerMesh) {
 Player.prototype.getMesh = function() {
   return this.mesh;
 };
+
+Player.prototype.getDirection = function() {
+  return this.direction;
+}
 
 Player.prototype.toggleMovement = function(keyCode, directionBool) {
   switch (keyCode) {
@@ -51,27 +56,36 @@ Player.prototype.toggleMovement = function(keyCode, directionBool) {
   }
 };
 
-Player.prototype.setWeapon = function(code, mesh) {
-  this.weapon = code;
+Player.prototype.setWeapon = function(code, weapon) {
+  this.weaponCode = code;
+  this.weapon = weapon;
 }
-Player.prototype.getWeapon = function() {
+
+Player.prototype.getCurrentWeapon = function() {
   return this.weapon;
 }
 
+Player.prototype.getWeaponCode = function() {
+  return this.weaponCode;
+}
+
 Player.prototype.update = function(elapsed) {
-  var curPosX = this.mesh.position.x;
+  var changeX = 0;
 
   // How much to move.
   var tr = 100.0;
 
   if (this.left) {
-    curPosX -= tr*elapsed*this.direction;
+    changeX = -tr*elapsed*this.direction;
   }
   else if (this.right) {
-    curPosX += tr*elapsed*this.direction;
+    changeX = tr*elapsed*this.direction;
   }
 
-  this.mesh.position.x = curPosX;
+  this.mesh.position.x += changeX;
+
+  this.weapon.getMesh().position.x += changeX;
+  this.weapon.update(elapsed); 
 };
 
 Player.prototype.setPosition = function(position) {
