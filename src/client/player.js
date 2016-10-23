@@ -16,6 +16,8 @@ function Player(id, position, direction, playerMesh) {
   this.right = false;
 
   this.mesh = playerMesh;
+  
+  this.weapon = 1;
 
   this.mesh.position.x = position.x;
   this.mesh.position.y = position.y - 40;
@@ -48,6 +50,13 @@ Player.prototype.toggleMovement = function(keyCode, directionBool) {
       break;
   }
 };
+
+Player.prototype.setWeapon = function(code, mesh) {
+  this.weapon = code;
+}
+Player.prototype.getWeapon = function() {
+  return this.weapon;
+}
 
 Player.prototype.update = function(elapsed) {
   var curPosX = this.mesh.position.x;

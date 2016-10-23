@@ -4,6 +4,8 @@ var camera = null;
 var socket = null;
 var isSpectator = false;
 
+var Util = require('./util');
+
 var CamController = function(cam, sock, direction) {
   // TODO: Consider using THREE.FirstPersonControls?
 
@@ -15,6 +17,7 @@ var CamController = function(cam, sock, direction) {
   isSpectator = !sock;
 
   this.direction = direction;
+  this.weapon = 1;
 
   var self = this;
   var startMovement = function(code) {
@@ -31,12 +34,36 @@ var CamController = function(cam, sock, direction) {
     }
   };
 
+  var selectWeapon = function(keyCode) {
+    var code = Util.getWeaponCode(keyCode);
+    if (code && socket && self.weapon !== code) {
+      console.log('Changed weapon from ' + self.weapon + ' to ' + code);
+      socket.emit('weapon.set', code);
+      self.weapon = code;
+    }
+  }
+
   // Register the player for key events.
   var keyDownEvent = function(keyEvent) {
     startMovement(keyEvent.keyCode);
   };
 
   var keyUpEvent = function(keyEvent) {
+    var keyCode = keyEvent.keyCode;
+
+    switch (keyCode) {
+      case 49:
+      case 50:
+      case 51:
+      case 97: // numeric keypad 1
+      case 98: // numeric keypad 2
+      case 99: // numeric keypad 3
+        selectWeapon(keyCode);
+        break;
+      default:
+        endMovement(keyCode);
+    }
+
     endMovement(keyEvent.keyCode);
   };
 
@@ -104,6 +131,7 @@ CamController.prototype.toggleMovement = function(keyCode, directionBool) {
       this.backward = directionBool;
       break;
   }
+
   return hasChanged;
 };
 
