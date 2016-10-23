@@ -18,6 +18,7 @@ let camera = null,
   Terrain = require('./terrain'),
   CamController = require('./camController'),
   Models = require('./models'),
+  Explosion = require('./explosion'),
   socket = io();
 
 function updateGameState(elapsed) {
@@ -27,6 +28,10 @@ function updateGameState(elapsed) {
 
   for (var key in gameState.zombies) {
     gameState.zombies[key].update(elapsed);
+  }
+
+  for (let explosion of gameState.explosions) {
+    explosion.update(elapsed);
   }
 
   if (camController != null) {
@@ -158,6 +163,7 @@ function setupEvents() {
   socket.on('zombie.collision', function(zombieId1, zombieId2) {
     console.log('Collision!', zombieId1, zombieId2);
     console.log(zombieId1, zombieId2);
+    gameState.explosions.push(new Explosion(scene));
     removeZombie(zombieId1);
     removeZombie(zombieId2);
   });
@@ -193,11 +199,15 @@ function init(renderAreaId) {
   gameState = {
     myId: null,
     players: {},
-    zombies: {}
+    zombies: {},
+    explosions: []
   };
 
   var terrain = new Terrain(128, 128, camera.position.y);
   scene.add(terrain.getMesh());
+
+  var explosion = new Explosion(scene);
+  gameState.explosions.push(explosion);
 
   // Init renderer and add its DOM element to the given render area.
   renderer = new THREE.WebGLRenderer({ alpha: true });
