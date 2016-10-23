@@ -201,7 +201,8 @@ function setupEvents() {
   socket.on('zombie.collision', function(zombieId1, zombieId2) {
     console.log('Collision!', zombieId1, zombieId2);
     console.log(zombieId1, zombieId2);
-    gameState.explosions.push(new Explosion(scene));
+    var zombie = gameState.zombies[zombieId1];
+    gameState.explosions.push(new Explosion(scene, zombie.getMesh().position));
     removeZombie(zombieId1);
     removeZombie(zombieId2);
   });
@@ -251,7 +252,7 @@ function init(renderAreaId) {
   var terrain = new Terrain(128, 128, camera.position.y);
   scene.add(terrain.getMesh());
 
-  var explosion = new Explosion(scene);
+  var explosion = new Explosion(scene, { x: 0, y: 0, z: 0 });
   gameState.explosions.push(explosion);
 
   // Init renderer and add its DOM element to the given render area.

@@ -1,7 +1,8 @@
 'use strict';
 
 class Explosion {
-  constructor(scene) {
+  constructor(scene, position) {
+    this.position = position
     this.particleCount = 5000;
     this.scene = scene;
     this.elapsed = 0;
@@ -26,6 +27,12 @@ class Explosion {
       color: '#ff0'
     });
     this.particle = new THREE.PointCloud(this.geometry, this.material);
+    this.particle.position.set(
+      this.position.x,
+      this.position.y,
+      this.position.z
+    );
+
     this.scene.add(this.particle);
   }
 
