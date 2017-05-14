@@ -1,7 +1,6 @@
 'use strict';
 
-/* global THREE */
-
+const THREE = require('three');
 const io = require('socket.io-client');
 import Models from "./models";
 import Player from "./player";
@@ -11,7 +10,6 @@ import Explosion from './explosion';
 import Terrain from './terrain';
 import Fox from './fox';
   
-
 let camera = null,
   camController = null,
   scene = null,

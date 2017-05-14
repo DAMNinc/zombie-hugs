@@ -1,7 +1,6 @@
 'use strict';
 
-/* global THREE */
-
+const THREE = require('three');
 import ImprovedNoise from './ImprovedNoise';
 
 var terrainWidth = null;
@@ -123,7 +122,6 @@ Terrain.prototype.getMesh = function() {
   // 					depthWrite: false,
   // 					transparent: true
   // 				} );
-
 
   return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial( { map: texture } ));
 };

@@ -2,7 +2,7 @@
  * @author Mikael Emtinger
  * Apache license from ROME project.
  */
-
+const THREE = require('three');
 
 ROME = window.ROME = {};
 

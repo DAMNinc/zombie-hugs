@@ -1,5 +1,7 @@
 'use strict';
 
+const THREE = require('three');
+
 export default class Explosion {
   constructor(scene, position) {
     this.position = position
