@@ -33,6 +33,12 @@
       </div>
     </div>
 
+    <div id="float-area">
+      <button type="button" id="exit-button" class="btn btn-default">
+        <i class="glyphicon glyphicon-off"></i>
+      </button>
+    </div>
+
     <script src="//ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/three.js/r71/three.min.js"></script>
@@ -43,7 +49,8 @@
         var params = {
             gameId: gameId,
             isSpectator: window.location.href.indexOf('spectate') >= 0, // spectator depends on a simple search of the browser url.
-            renderAreaId: 'render-area'
+            renderAreaId: 'render-area',
+            exitButtonId: 'exit-button'
         };
 
         window.addEventListener('join.spectator.full', function() {
