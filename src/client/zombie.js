@@ -19,6 +19,7 @@ let camera = null,
   CamController = require('./camController'),
   Models = require('./models'),
   Explosion = require('./explosion'),
+  Constants = require('./constants'),
   socket = io();
 
 function updateGameState(elapsed) {
@@ -57,13 +58,13 @@ function removeZombie(zombieId) {
 function getZombieModelFromCode(code) {
   var zombieModel;
   switch (code) {
-    case 1:
+    case Constants.FOX:
       zombieModel = models.getZombie();
       break;
-    case 2:
+    case Constants.HORSE:
       zombieModel = models.getHorse();
       break;
-    case 3:
+    case Constants.FLAMINGO:
       zombieModel = models.getFlamingo();
       break;
   }
@@ -134,7 +135,7 @@ function setupEvents() {
     console.log('I am player', player.id);
 
     var p = new Player(player.id, player.position, player.direction, models.getPlayer(player.direction));
-    setWeapon(p, 1);
+    setWeapon(p, Constants.FOX);
 
     gameState.players[player.id] = p;
 

@@ -3,8 +3,10 @@
 var camera = null;
 var socket = null;
 var isSpectator = false;
+var lastShot = 0;
 
 var Util = require('./util');
+var Constants = require('./constants');
 
 var CamController = function(cam, sock, direction) {
   // TODO: Consider using THREE.FirstPersonControls?
@@ -17,7 +19,7 @@ var CamController = function(cam, sock, direction) {
   isSpectator = !sock;
 
   this.direction = direction;
-  this.weapon = 1;
+  this.weapon = Constants.FOX;
 
   var self = this;
   var startMovement = function(code) {
@@ -137,7 +139,12 @@ CamController.prototype.toggleMovement = function(keyCode, directionBool) {
 
 CamController.prototype.fire = function() {
   if (socket) {
-    socket.emit('fire', camera.position);
+    var delay = Util.getWeaponDelay(this.weapon);
+    var now = new Date().getTime();
+    if (now - lastShot > delay) {
+      lastShot = now;
+      socket.emit('fire', camera.position);
+    }
   }
 };
 
@@ -177,6 +184,20 @@ CamController.prototype.update = function(elapsed) {
     camera.position.z = curPosZ;
     camera.rotation.y = curRot;
     return;
+  } else {
+    // only show reload-bar when playing
+
+    var delay = Util.getWeaponDelay(this.weapon);
+    var now = new Date().getTime();
+
+    var reloader = document.getElementById('reload-bar');
+    if (now - lastShot <= delay) {
+      reloader.style.width = ((now - lastShot) / delay)*100 + '%';
+    } else {
+      // set to 100% when ready to shoot
+      reloader.style.width = '100%';
+    }
+
   }
 
   // If the cam controller is a player, the player direction matters and we can
