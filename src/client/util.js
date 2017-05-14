@@ -21,6 +21,22 @@ class Util {
     return code;
   }
 
+  static getWeaponDelay(weapon) {
+    var delay = 0;
+    switch(weapon) {
+      case 1:
+        delay = 1000;
+        break;
+      case 2:
+        delay = 1500;
+        break;
+      case 3:
+        delay = 500;
+        break;
+    }
+    return delay;
+  }
+
 }
 
 module.exports = Util;
