@@ -5,28 +5,24 @@ const gulp = require('gulp'),
   uglify = require('gulp-uglify'),
   del = require('del'),
   nodemon = require('gulp-nodemon'),
-  gutil = require('gulp-util'),
   args = require('yargs').argv,
-  browserify = require('browserify'),
-  source = require('vinyl-source-stream'),
-  runSequence = require('run-sequence');
-
-const mainFile = './src/client/zombie.js';
-
-const browserifyApp = () => {
-  return browserify(mainFile)
-    .bundle()
-    .on('error', gutil.log.bind(gutil, 'Browserify Error'))
-    .pipe(source('zombie.js'))
-    .pipe(gulp.dest('./build/'));
-};
-
+  runSequence = require('run-sequence'),
+  webpack      = require('webpack'),
+  gulpWebpack  = require('webpack-stream-fixed'),
+  webpackConfig = require('./webpack.config.js');
+  
 gulp.task('clean', cb => {
   del(['build/**/*'], cb);
 });
 
 gulp.task('build', ['clean'], () => {
-	return browserifyApp();
+  return gulp.src('')
+      .pipe(gulpWebpack(webpackConfig, webpack))
+      .on('error', function(error) {
+          console.error(error.message);
+          this.emit('end');
+      })
+      .pipe(gulp.dest(webpackConfig.output.path));
 });
 
 gulp.task('css', () => {

@@ -5,7 +5,6 @@
   "main": "dist/zombie.js",
   "dependencies": {
     "body-parser": "^1.10.0",
-    "browserify": "^13.1.1",
     "del": "^1.1.0",
     "express": "^4.12.3",
     "express-handlebars": "^3.0.0",
@@ -13,11 +12,9 @@
     "gulp-nodemon": "^2.0.0",
     "gulp-rename": "^1.2.0",
     "gulp-uglify": "^1.2.0",
-    "gulp-util": "^3.0.7",
     "run-sequence": "^1.1.5",
     "socket.io": "^1.5.0",
     "socket.io-client": "^1.5.0",
-    "vinyl-source-stream": "^1.0.0",
     "winston": "^2.2.0",
     "yargs": "^1.2.6"
   },
@@ -25,6 +22,7 @@
     "node": "6.9.1"
   },
   "scripts": {
+    "build": "webpack",
     "test": "echo \"Error: no test specified\" && exit 1",
     "prestart": "gulp dist",
     "start": "node server.js"
@@ -33,7 +31,9 @@
   "author": "DAMN Inc.",
   "license": "MIT",
   "devDependencies": {
-    "jshint": "^2.7.0"
+    "jshint": "^2.7.0",
+    "webpack": "^2.5.1",
+    "webpack-stream-fixed": "^3.2.2"
   },
   "repository": {
     "type": "git",
