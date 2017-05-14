@@ -1,5 +1,7 @@
 'use strict';
 
+const THREE = require('three');
+
 export default function Models() {
   this.missing = 0;
   this.fox = null;
