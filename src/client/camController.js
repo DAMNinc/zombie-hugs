@@ -6,6 +6,7 @@ var isSpectator = false;
 var lastShot = 0;
 
 var Util = require('./util');
+var Constants = require('./constants');
 
 var CamController = function(cam, sock, direction) {
   // TODO: Consider using THREE.FirstPersonControls?
@@ -18,7 +19,7 @@ var CamController = function(cam, sock, direction) {
   isSpectator = !sock;
 
   this.direction = direction;
-  this.weapon = 1;
+  this.weapon = Constants.FOX;
 
   var self = this;
   var startMovement = function(code) {
@@ -189,7 +190,7 @@ CamController.prototype.update = function(elapsed) {
     var delay = Util.getWeaponDelay(this.weapon);
     var now = new Date().getTime();
 
-    var reloader = document.getElementById("reload-bar");
+    var reloader = document.getElementById('reload-bar');
     if (now - lastShot <= delay) {
       reloader.style.width = ((now - lastShot) / delay)*100 + '%';
     } else {
