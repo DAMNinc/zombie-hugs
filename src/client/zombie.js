@@ -220,6 +220,13 @@ function setupEvents() {
 
     setWeapon(player, code);
   });
+
+  socket.on('player.exit', function(playerId) {
+    console.log('player exited!', playerId);
+    var player = gameState.players[playerId];
+    scene.remove(player.getMesh());
+    delete gameState.players[playerId];
+  });
 }
 
 /**
@@ -311,6 +318,11 @@ function joinSpectator(gameId) {
   camController = new CamController(camera);
 }
 
+function exitGame(gameId) {
+  socket.emit('exit', {gameId: gameId});
+  window.location.href = '/';
+}
+
 function ZombieHugs() {}
 
 /**
@@ -320,6 +332,10 @@ ZombieHugs.prototype.start = function(params) {
   // Cancel the previous animation loop.
   if (animationId !== null) cancelAnimationFrame(animationId);
   init(params.renderAreaId);
+  document.getElementById(params.exitButtonId)
+    .addEventListener('click', function() {
+      exitGame(params.gameId);
+    });
 
   var self = this;
 
