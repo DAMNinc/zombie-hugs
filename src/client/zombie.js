@@ -20,6 +20,7 @@ let camera = null,
   Models = require('./models'),
   Explosion = require('./explosion'),
   Constants = require('./constants'),
+  console = require('./console'),
   socket = io();
 
 function updateGameState(elapsed) {
@@ -132,7 +133,7 @@ function setupEvents() {
   // This event will not be emitted for spectators.
   socket.on('player', function(player) {
     gameState.myId = player.id;
-    console.log('I am player', player.id);
+    console.info('I am: ' + player.id);
 
     var p = new Player(player.id, player.position, player.direction, models.getPlayer(player.direction));
     setWeapon(p, Constants.FOX);
@@ -151,7 +152,7 @@ function setupEvents() {
 
   // Event for receiving opponent information from the server.
   socket.on('opponent', function(player) {
-    console.log('opponent: ', player.id);
+    console.info('The opponent has joined the game: ' + player.id);
 
     var p = new Player(player.id, player.position, player.direction, models.getPlayer(player.direction));
     setWeapon(p, player.weaponCode);
@@ -166,7 +167,7 @@ function setupEvents() {
 
   // Event for receiving spectator information from the server.
   socket.on('spectator', function(player) {
-    console.log('spectator joined: ', player.id);
+    console.info('A spectator has joined...');
   });
 
   socket.on('move.start', function(keyCode, playerId) {
@@ -200,29 +201,29 @@ function setupEvents() {
   });
 
   socket.on('zombie.collision', function(zombieId1, zombieId2) {
-    console.log('Collision!', zombieId1, zombieId2);
-    console.log(zombieId1, zombieId2);
+    console.info('Collision between ' + zombieId1 + ' and ' + zombieId2);
+    
     var zombie = gameState.zombies[zombieId1];
     gameState.explosions.push(new Explosion(scene, zombie.getMesh().position));
+
     removeZombie(zombieId1);
     removeZombie(zombieId2);
   });
 
   socket.on('zombie.out-of-bounds', function(zombieId) {
-    console.log('Out of bounds!', zombieId);
-    console.log(zombieId);
+    console.info(zombieId + ' has left the building!');
     removeZombie(zombieId);
   });
 
   socket.on('weapon.set', function(code, playerId) {
-    console.log(playerId + ' switch to ' + code);
+    console.info(playerId + ' switch to ' + code);
     var player = gameState.players[playerId];
 
     setWeapon(player, code);
   });
 
   socket.on('player.exit', function(playerId) {
-    console.log('player exited!', playerId);
+    console.info('Player exited!', playerId);
     var player = gameState.players[playerId];
     scene.remove(player.getMesh());
     delete gameState.players[playerId];
