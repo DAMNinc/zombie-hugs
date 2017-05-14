@@ -1,14 +1,16 @@
 'use strict';
 
+import Constants from './constants';
+import Util from './util';
+
+
 var camera = null;
 var socket = null;
 var isSpectator = false;
 var lastShot = 0;
 
-var Util = require('./util');
-var Constants = require('./constants');
 
-var CamController = function(cam, sock, direction) {
+export default function CamController(cam, sock, direction) {
   // TODO: Consider using THREE.FirstPersonControls?
 
   camera = cam;
@@ -210,5 +212,3 @@ CamController.prototype.update = function(elapsed) {
   }
   camera.position.x = curPosX;
 };
-
-module.exports = CamController;

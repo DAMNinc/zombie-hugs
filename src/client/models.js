@@ -1,6 +1,6 @@
 'use strict';
 
-function Models() {
+export default function Models() {
   this.missing = 0;
   this.fox = null;
   this.flamingo = null;
@@ -59,5 +59,3 @@ function load(models, loader, file, result) {
       models.missing--;
   });
 }
-
-module.exports = Models;

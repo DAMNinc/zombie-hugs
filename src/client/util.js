@@ -1,8 +1,8 @@
 'use strict';
 
-var Constants = require('./constants');
+import Constants from './constants';
 
-class Util {
+export default class Util {
 
   static getWeaponCode(keyCode) {
     var code;
@@ -40,5 +40,3 @@ class Util {
   }
 
 }
-
-module.exports = Util;

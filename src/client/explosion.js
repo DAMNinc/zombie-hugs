@@ -1,6 +1,6 @@
 'use strict';
 
-class Explosion {
+export default class Explosion {
   constructor(scene, position) {
     this.position = position
     this.particleCount = 5000;
@@ -58,5 +58,3 @@ class Explosion {
     return true;
   }
 }
-
-module.exports = Explosion;
