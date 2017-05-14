@@ -2,7 +2,7 @@
 
 /* global THREE */
 
-var ImprovedNoise = require('./ImprovedNoise');
+import ImprovedNoise from './ImprovedNoise';
 
 var terrainWidth = null;
 var terrainHeight = null;
@@ -90,7 +90,7 @@ function generateTexture(data) {
 
 }
 
-function Terrain(width, height, offset) {
+export default function Terrain(width, height, offset) {
 	terrainWidth = width * 2;
 	terrainHeight = height * 2;
 	this.yOffset = offset;
@@ -127,5 +127,3 @@ Terrain.prototype.getMesh = function() {
 
   return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial( { map: texture } ));
 };
-
-module.exports = Terrain;
