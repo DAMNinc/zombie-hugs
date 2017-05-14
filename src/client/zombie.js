@@ -1,9 +1,16 @@
 'use strict';
 
-/* global THREE */
-
+const THREE = require('three');
 const io = require('socket.io-client');
-
+import Models from "./models";
+import Player from "./player";
+import Constants from "./constants";
+import CamController from './camController';
+import Explosion from './explosion';
+import Terrain from './terrain';
+import Fox from './fox';
+import console from './console';
+  
 let camera = null,
   camController = null,
   scene = null,
@@ -13,14 +20,6 @@ let camera = null,
   clock = null,
   animationId = null,
   animating = false,
-  Player = require('./player'),
-  Fox = require('./fox'),
-  Terrain = require('./terrain'),
-  CamController = require('./camController'),
-  Models = require('./models'),
-  Explosion = require('./explosion'),
-  Constants = require('./constants'),
-  console = require('./console'),
   socket = io();
 
 function updateGameState(elapsed) {

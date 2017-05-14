@@ -11,4 +11,8 @@ module.exports = {
   resolve: {
     extensions: ['.js']
   },
+  externals: {
+    jquery: 'jQuery',
+    three: 'THREE'
+  },
 };

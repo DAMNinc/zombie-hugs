@@ -1,6 +1,8 @@
 'use strict';
 
-class Explosion {
+const THREE = require('three');
+
+export default class Explosion {
   constructor(scene, position) {
     this.position = position
     this.particleCount = 5000;
@@ -58,5 +60,3 @@ class Explosion {
     return true;
   }
 }
-
-module.exports = Explosion;

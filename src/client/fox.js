@@ -2,7 +2,7 @@
  * @author Mikael Emtinger
  * Apache license from ROME project.
  */
-
+const THREE = require('three');
 
 ROME = window.ROME = {};
 
@@ -705,7 +705,7 @@ function randomizeColors( colors, variations ) {
 /**
  * Represents a fox.
  */
-function Fox(direction, zombieModel) {
+export default function Fox(direction, zombieModel) {
     this.offset = zombieModel.offset;
 
     this.direction = direction || -1;
@@ -735,5 +735,3 @@ Fox.prototype.getPosition = function() {
 Fox.prototype.setPosition = function(position) {
   this.foxObj.mesh.position.set(position.x + this.offset.x, position.y-50 + this.offset.y, position.z + this.offset.z);
 };
-
-module.exports = Fox;

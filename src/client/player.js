@@ -6,7 +6,7 @@
  * Represents a playable character.
  * The character is controllable with keyboard and mouse.
  */
-function Player(id, position, direction, playerMesh, weapon) {
+export default function Player(id, position, direction, playerMesh, weapon) {
   this.id = id;
   this.direction = direction;
 
@@ -91,5 +91,3 @@ Player.prototype.update = function(elapsed) {
 Player.prototype.setPosition = function(position) {
   this.mesh.position.set(position.x, position.y-40, position.z);
 };
-
-module.exports = Player;
