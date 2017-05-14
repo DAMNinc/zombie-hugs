@@ -31,9 +31,10 @@ body {
 	height: 25%;
 	width: 40%;
 	display: block;
-    unicode-bidi: embed;
-    font-family: monospace;
-    white-space: pre;
-    overflow-x: hidden;
-    overflow-y: scroll;
+  unicode-bidi: embed;
+  font-family: monospace;
+  white-space: pre;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  padding-bottom: 20px;
 }
