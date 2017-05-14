@@ -333,21 +333,19 @@ ZombieHugs.prototype.start = function(params) {
   if (animationId !== null) cancelAnimationFrame(animationId);
   init(params.renderAreaId);
   document.getElementById(params.exitButtonId)
-    .addEventListener('click', function() {
+    .addEventListener('click', () => {
       exitGame(params.gameId);
     });
 
-  var self = this;
-
   // wait until models have been loaded
 
-  var checkReady = function() {
+  const checkReady = () => {
     if (!models.isReady()) {
       console.log("Waiting for models...");
       setTimeout(checkReady, 1000);
     } else {
       console.log("Models loaded");
-      gameState.game = self;
+      gameState.game = this;
       setupEvents();
       animating = true;
       animate();
@@ -360,6 +358,11 @@ ZombieHugs.prototype.start = function(params) {
       }
     }
   };
+
+  this.pingInterval = setInterval(() => {
+    // 'ping' is reserved...
+    socket.emit('pingpong');
+  }, 1000);
 
   checkReady();
 };
