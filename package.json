@@ -17,7 +17,9 @@
     "socket.io-client": "^1.5.0",
     "three": "^0.71.1",
     "winston": "^2.2.0",
-    "yargs": "^1.2.6"
+    "yargs": "^1.2.6",
+    "webpack": "^2.5.1",
+    "webpack-stream-fixed": "^3.2.2"
   },
   "engines": {
     "node": "6.9.1"
@@ -32,9 +34,7 @@
   "author": "DAMN Inc.",
   "license": "MIT",
   "devDependencies": {
-    "jshint": "^2.7.0",
-    "webpack": "^2.5.1",
-    "webpack-stream-fixed": "^3.2.2"
+    "jshint": "^2.7.0"
   },
   "repository": {
     "type": "git",
