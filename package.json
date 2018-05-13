@@ -34,7 +34,7 @@
   "author": "DAMN Inc.",
   "license": "MIT",
   "devDependencies": {
-    "jshint": "^2.7.0"
+    "jshint": "^2.9.5"
   },
   "repository": {
     "type": "git",
