@@ -24,6 +24,8 @@ export default function Player(id, position, direction, playerMesh, weapon) {
   this.mesh.position.y = position.y - 40;
   this.mesh.position.z = position.z;
 
+  this.score = 0;
+
   console.log('Player created');
 }
 
@@ -90,4 +92,8 @@ Player.prototype.update = function(elapsed) {
 
 Player.prototype.setPosition = function(position) {
   this.mesh.position.set(position.x, position.y-40, position.z);
+};
+
+Player.prototype.setScore = function(score) {
+  this.score = score;
 };

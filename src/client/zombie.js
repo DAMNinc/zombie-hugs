@@ -10,6 +10,7 @@ import Explosion from './explosion';
 import Terrain from './terrain';
 import Fox from './fox';
 import console from './console';
+import Score from './score';
   
 let camera = null,
   camController = null,
@@ -196,6 +197,8 @@ function setupEvents() {
         return console.error('Server player or client player missing!');
       }
       clientPlayer.setPosition(serverPlayer.position);
+      clientPlayer.setScore(serverPlayer.score);
+      if (clientPlayer.id === gameState.myId) Score.update(serverPlayer.score);
     }
   });
 
