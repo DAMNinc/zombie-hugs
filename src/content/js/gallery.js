@@ -26,6 +26,7 @@
                 scene.remove(zombie.mesh);
             }
             zombie = new ROME.Animal(newZombie.model.geometry, true);
+            zombie.mesh.scale.set(newZombie.previewScale, newZombie.previewScale, newZombie.previewScale);
             zombie.play(zombie.availableAnimals[0], zombie.availableAnimals[0]);
             zombie.animalA.timeScale = zombie.animalB.timeScale = 0.9;
 
