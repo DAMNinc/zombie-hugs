@@ -1,15 +1,13 @@
-var path = require('path');
+const path = require('path');
 
 module.exports = {
+  mode: 'development',
   entry: {
     'zombie': './src/client/zombie.js'
   },
   output: {
     path: path.resolve(__dirname, 'build'),
     filename: '[name].js'
-  },
-  resolve: {
-    extensions: ['.js']
   },
   externals: {
     jquery: 'jQuery',
