@@ -8,7 +8,7 @@ const gulp = require('gulp'),
   args = require('yargs').argv,
   runSequence = require('run-sequence'),
   webpack      = require('webpack'),
-  gulpWebpack  = require('webpack-stream-fixed'),
+  gulpWebpack  = require('webpack-stream'),
   webpackConfig = require('./webpack.config.js');
   
 gulp.task('clean', cb => {
