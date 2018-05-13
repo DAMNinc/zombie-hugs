@@ -6,7 +6,8 @@
             "features": [
                 "Reload time: 0.5 seconds"
             ],
-            "modelPath": "/content/flamingo.json"
+            "modelPath": "/content/flamingo.json",
+            "previewScale": 0.7
         },
         {
             "name": "Fox",
@@ -14,7 +15,8 @@
             "features": [
                 "Reload time: 1 second"
             ],
-            "modelPath": "/content/fox.json"
+            "modelPath": "/content/fox.json",
+            "previewScale": 1
         },
         {
             "name": "Horse",
@@ -22,7 +24,8 @@
             "features": [
                 "Reload time: 1.5 seconds"
             ],
-            "modelPath": "/content/horse.json"
+            "modelPath": "/content/horse.json",
+            "previewScale": 0.3
         }
     ]
 }
