@@ -4,8 +4,7 @@
             "name": "Flamingo",
             "shortDescription": "Fast and high flying",
             "features": [
-                "Flamingo feature 1",
-                "Flamingo feature 2"
+                "Reload time: 0.5 seconds"
             ],
             "modelPath": "/content/flamingo.json"
         },
@@ -13,8 +12,7 @@
             "name": "Fox",
             "shortDescription": "Slient and almost invisible",
             "features": [
-                "Fox feature 1",
-                "Fox feature 2"
+                "Reload time: 1 second"
             ],
             "modelPath": "/content/fox.json"
         },
@@ -22,8 +20,7 @@
             "name": "Horse",
             "shortDescription": "Bigger but slower",
             "features": [
-                "Horse feature 1",
-                "Horse feature 2"
+                "Reload time: 1.5 seconds"
             ],
             "modelPath": "/content/horse.json"
         }
