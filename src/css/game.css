@@ -37,4 +37,5 @@ body {
   overflow-x: hidden;
   overflow-y: scroll;
   padding-bottom: 20px;
+  user-select: none;
 }
