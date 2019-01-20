@@ -1,5 +1,6 @@
 'use strict';
 
+const version = require('./package.json').version;
 var express = require('express');
 var exphbs  = require('express-handlebars');
 var bodyParser = require('body-parser');
@@ -30,7 +31,10 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 app.get('/', function (req, res) {
-	var data = { games: controller.games };
+	var data = {
+    version,
+    games: controller.games,
+  };
   res.render('index', data);
 });
 

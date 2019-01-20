@@ -1,6 +1,6 @@
 {
   "name": "zombie-hugs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DAMN good zombie game",
   "main": "dist/zombie.js",
   "dependencies": {
