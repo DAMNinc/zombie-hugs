@@ -1,71 +1,72 @@
 'use strict';
-
-const gulp = require('gulp'),
+const { src, dest, parallel, series, task, watch } = require('gulp');
+const 
   rename = require('gulp-rename'),
   uglify = require('gulp-uglify'),
   del = require('del'),
   nodemon = require('gulp-nodemon'),
-  args = require('yargs').argv,
-  runSequence = require('run-sequence'),
   webpack      = require('webpack'),
   gulpWebpack  = require('webpack-stream'),
   webpackConfig = require('./webpack.config.js');
   
-gulp.task('clean', cb => {
+function clean(cb) {
   del(['build/**/*'], cb);
-});
+}
+task('clean', clean);
 
-gulp.task('build', ['clean'], () => {
-  return gulp.src('')
-      .pipe(gulpWebpack(webpackConfig, webpack))
-      .on('error', function(error) {
-          console.error(error.message);
-          this.emit('end');
-      })
-      .pipe(gulp.dest(webpackConfig.output.path));
-});
+function build() {
+  return src('./src/client/zombie.js')
+    .pipe(gulpWebpack(webpackConfig, webpack))
+    .on('error', function(error) {
+        console.error(error.message);
+        this.emit('end');
+    })
+    .pipe(dest(webpackConfig.output.path));
+}
+task('build', series(clean, build));
 
-gulp.task('css', () => {
-  return gulp.src(['./src/css/*'])
-    .pipe(gulp.dest('./public/css'));
-});
+function css() {
+  return src(['./src/css/*'])
+    .pipe(dest('./public/css'));
+}
+task('css', css);
 
-gulp.task('content', () => {
-  return gulp.src(['./src/content/**'])
-    .pipe(gulp.dest('./public/content'));
-});
+function content() {
+  return src(['./src/content/**'])
+    .pipe(dest('./public/content'));
+}
+task('content', content);
 
-gulp.task('fonts', () => {
-  return gulp.src(['./src/fonts/*'])
-    .pipe(gulp.dest('./public/fonts'));
-});
+function fonts() {
+  return src(['./src/fonts/*'])
+    .pipe(dest('./public/fonts'));
+}
+task('fonts', fonts);
 
-gulp.task('copy', ['css', 'content', 'fonts'], () => {});
+const copy = parallel(css, content, fonts);
+task('copy', copy);
 
-gulp.task('compress', ['build'], () => {
-  return gulp.src('./build/*.js')
+function compress() {
+  return src('./build/*.js')
     .pipe(uglify())
     .pipe(rename({suffix: '.min'}))
-    .pipe(gulp.dest('./build'));
-});
+    .pipe(dest('./build'));
+}
+task('compress', series(build, compress));
 
-gulp.task('dist', ['build', 'copy'], () => {
-	return gulp.src(['./build/*.js'])
-		.pipe(gulp.dest('./public/js'));
-});
+function dist() {
+  return src(['./build/*.js'])
+    .pipe(dest('./public/js'));
+}
+task('dist', series(parallel(build, copy), dist));
 
-gulp.task('watch', () => {
-  gulp.watch('src/**/*.js', ['dist']);
-});
-
-gulp.task('serve', ['dist'], () => {
+function serve() {
   nodemon({
     watch: ['server.js', 'src', 'lib'],
     script: 'server.js',
     ext: 'html js'
   });
-})
-
-gulp.task('default', () => {
-  runSequence(['serve'], ['watch']);
-});
+}
+task('serve', series(dist, serve));
+task('watch', () => watch('src/**/*.js', dist)); 
+task('default', series(serve, watch));
