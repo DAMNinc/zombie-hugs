@@ -1,7 +1,7 @@
 'use strict';
 
 const THREE = require('three');
-const io = require('socket.io-client');
+const { io } = require('socket.io-client');
 import Models from "./models";
 import Player from "./player";
 import Constants from "./constants";
@@ -11,7 +11,7 @@ import Terrain from './terrain';
 import Fox from './fox';
 import console from './console';
 import Score from './score';
-  
+
 let camera = null,
   camController = null,
   scene = null,
@@ -73,28 +73,28 @@ function getZombieModelFromCode(code) {
 }
 
 function createFoxFromModel(direction, position, model) {
-    var fox = new Fox(direction, model);
+  var fox = new Fox(direction, model);
 
-    // Set the fox at the mesh position.
-    // The fox is "standing over the y-axis" so a little bit is
-    // subtracted from the y-axis coordinate.
-    fox.foxObj.mesh.position.x = position.x + model.offset.x;
-    fox.foxObj.mesh.position.y = position.y-50 + model.offset.y;
-    fox.foxObj.mesh.position.z = position.z + model.offset.z;
+  // Set the fox at the mesh position.
+  // The fox is "standing over the y-axis" so a little bit is
+  // subtracted from the y-axis coordinate.
+  fox.foxObj.mesh.position.x = position.x + model.offset.x;
+  fox.foxObj.mesh.position.y = position.y - 50 + model.offset.y;
+  fox.foxObj.mesh.position.z = position.z + model.offset.z;
 
-    // Rotate 180 degrees to face away from player.
-    if (direction === -1) {
-      fox.foxObj.mesh.rotation.y = Math.PI;
-    }
+  // Rotate 180 degrees to face away from player.
+  if (direction === -1) {
+    fox.foxObj.mesh.rotation.y = Math.PI;
+  }
 
-    return fox;
+  return fox;
 }
 
 function setWeapon(player, code) {
   console.log('called for ' + player.id);
   var zombieModel = getZombieModelFromCode(code);
 
-  var startPosition = {x : player.getMesh().position.x, y: player.getMesh().position.y, z: player.getMesh().position.z };
+  var startPosition = { x: player.getMesh().position.x, y: player.getMesh().position.y, z: player.getMesh().position.z };
   startPosition.z += player.getDirection() * -1 * 100;
   startPosition.y += 50;
   startPosition.x += player.getDirection() * -1 * 25;
@@ -106,7 +106,7 @@ function setWeapon(player, code) {
 
   var fox = createFoxFromModel(player.getDirection() * -1, startPosition, zombieModel);
   fox.setSpeed(0);
-  fox.getMesh().scale.set(0.25,0.25,0.25);
+  fox.getMesh().scale.set(0.25, 0.25, 0.25);
   scene.add(fox.getMesh());
 
   player.setWeapon(code, fox);
@@ -114,7 +114,7 @@ function setWeapon(player, code) {
 
 function setupEvents() {
   // Event for receiving information about zombies.
-  socket.on('zombie', function(zombie, playerId) {
+  socket.on('zombie', function (zombie, playerId) {
     console.log('Zombie added for ' + playerId, zombie);
 
     var zombieModel = getZombieModelFromCode(gameState.players[playerId].getWeaponCode());
@@ -131,7 +131,7 @@ function setupEvents() {
   // Event for receiving player information from the server.
   // Used for signalling how the server perceives this player.
   // This event will not be emitted for spectators.
-  socket.on('player', function(player) {
+  socket.on('player', function (player) {
     gameState.myId = player.id;
     console.info('I am: ' + player.id);
 
@@ -151,7 +151,7 @@ function setupEvents() {
   });
 
   // Event for receiving opponent information from the server.
-  socket.on('opponent', function(player) {
+  socket.on('opponent', function (player) {
     console.info('The opponent has joined the game: ' + player.id);
 
     var p = new Player(player.id, player.position, player.direction, models.getPlayer(player.direction));
@@ -166,21 +166,21 @@ function setupEvents() {
   });
 
   // Event for receiving spectator information from the server.
-  socket.on('spectator', function(player) {
+  socket.on('spectator', function (player) {
     console.info('A spectator has joined...');
   });
 
-  socket.on('move.start', function(keyCode, playerId) {
+  socket.on('move.start', function (keyCode, playerId) {
     console.log('Player move start', keyCode, playerId);
     gameState.players[playerId].toggleMovement(keyCode, true);
   });
 
-  socket.on('move.end', function(keyCode, playerId) {
+  socket.on('move.end', function (keyCode, playerId) {
     console.log('Player move end', keyCode, playerId);
     gameState.players[playerId].toggleMovement(keyCode, false);
   });
 
-  socket.on('state', function(state) {
+  socket.on('state', function (state) {
     for (var key in state.zombies) {
       var serverZombie = state.zombies[key];
       var clientZombie = gameState.zombies[key];
@@ -202,9 +202,9 @@ function setupEvents() {
     }
   });
 
-  socket.on('zombie.collision', function(zombieId1, zombieId2) {
+  socket.on('zombie.collision', function (zombieId1, zombieId2) {
     console.info('Collision between ' + zombieId1 + ' and ' + zombieId2);
-    
+
     var zombie = gameState.zombies[zombieId1];
     gameState.explosions.push(new Explosion(scene, zombie.getMesh().position));
 
@@ -212,19 +212,19 @@ function setupEvents() {
     removeZombie(zombieId2);
   });
 
-  socket.on('zombie.out-of-bounds', function(zombieId) {
+  socket.on('zombie.out-of-bounds', function (zombieId) {
     console.info(zombieId + ' has left the building!');
     removeZombie(zombieId);
   });
 
-  socket.on('weapon.set', function(code, playerId) {
+  socket.on('weapon.set', function (code, playerId) {
     console.info(playerId + ' switch to ' + code);
     var player = gameState.players[playerId];
 
     setWeapon(player, code);
   });
 
-  socket.on('player.exit', function(playerId) {
+  socket.on('player.exit', function (playerId) {
     console.info('Player exited!', playerId);
     var player = gameState.players[playerId];
     scene.remove(player.getMesh());
@@ -243,11 +243,11 @@ function init(renderAreaId) {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
 
-  var hemiLight = new THREE.HemisphereLight( 0xffffff, 0xffffff, 10 );
-  hemiLight.color.setHSL( 0.6, 1, 0.6 );
-  hemiLight.groundColor.setHSL( 0.095, 1, 0.75 );
-  hemiLight.position.set( 0, 500, 0 );
-  scene.add( hemiLight );
+  var hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 10);
+  hemiLight.color.setHSL(0.6, 1, 0.6);
+  hemiLight.groundColor.setHSL(0.095, 1, 0.75);
+  hemiLight.position.set(0, 500, 0);
+  scene.add(hemiLight);
 
   // Init timetaking
   clock = new THREE.Clock(true);
@@ -300,7 +300,7 @@ function animate() {
 function joinPlayer(gameId) {
   // Tell the server that we would like to join as a player. This might not be
   // possible if there are already two players so listen for a join error event
-  socket.on('join.error.full', function() {
+  socket.on('join.error.full', function () {
     // A join error means that we cannot join as player.
     // Join as spectator instead...
     joinSpectator(gameId);
@@ -310,28 +310,28 @@ function joinPlayer(gameId) {
     window.dispatchEvent(ev);
   });
 
-  socket.emit('join.player', {gameId: gameId});
+  socket.emit('join.player', { gameId: gameId });
 }
 
 /**
  * Tells the game that a player wants to join as spectator.
  */
 function joinSpectator(gameId) {
-  socket.emit('join.spectator', {gameId: gameId});
+  socket.emit('join.spectator', { gameId: gameId });
   camController = new CamController(camera);
 }
 
 function exitGame(gameId) {
-  socket.emit('exit', {gameId: gameId});
+  socket.emit('exit', { gameId: gameId });
   window.location.href = '/';
 }
 
-function ZombieHugs() {}
+function ZombieHugs() { }
 
 /**
  * Starts the game.
  */
-ZombieHugs.prototype.start = function(params) {
+ZombieHugs.prototype.start = function (params) {
   // Cancel the previous animation loop.
   if (animationId !== null) cancelAnimationFrame(animationId);
   init(params.renderAreaId);
@@ -370,7 +370,7 @@ ZombieHugs.prototype.start = function(params) {
   checkReady();
 };
 
-ZombieHugs.prototype.stop = function() {
+ZombieHugs.prototype.stop = function () {
   animating = false;
 };
 

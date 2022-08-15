@@ -1,20 +1,19 @@
 {
   "name": "zombie-hugs",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "DAMN good zombie game",
   "main": "dist/zombie.js",
   "dependencies": {
-    "body-parser": "^1.10.0",
-    "express": "^4.12.3",
-    "express-handlebars": "^3.0.0",
-    "natives": "^1.1.6",
-    "socket.io": "^2.4.0",
-    "socket.io-client": "^2.1.0",
-    "three": "^0.125.0",
-    "winston": "^2.2.0"
+    "body-parser": "^1.20.0",
+    "express": "^4.18.1",
+    "express-handlebars": "^6.0.6",
+    "socket.io": "^4.5.1",
+    "socket.io-client": "^4.5.1",
+    "three": "^0.143.0",
+    "winston": "^3.8.1"
   },
   "engines": {
-    "node": "~8.9.4"
+    "node": "^16.15.0"
   },
   "scripts": {
     "build": "webpack",
@@ -37,10 +36,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dlebech/zombie-hugs.git"
+    "url": "https://github.com/DAMNinc/zombie-hugs.git"
   },
   "bugs": {
-    "url": "https://github.com/dlebech/zombie-hugs/issues"
+    "url": "https://github.com/DAMNinc/zombie-hugs/issues"
   },
-  "homepage": "https://github.com/dlebech/zombie-hugs"
+  "homepage": "https://github.com/DAMNinc/zombie-hugs"
 }
