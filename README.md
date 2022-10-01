@@ -8,7 +8,7 @@ To run the server:
     $ npm install
     $ node_modules/.bin/gulp
 
-[Example server](https://zombie-hugs.herokuapp.com).
+[Example server](https://zombie-hugs.onrender.com/).
 
 License
 -------
