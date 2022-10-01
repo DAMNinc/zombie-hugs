@@ -16,9 +16,8 @@
     "node": "^16.15.0"
   },
   "scripts": {
-    "build": "webpack",
+    "build": "gulp dist",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prestart": "gulp dist",
     "start": "node server.js"
   },
   "keywords": [],
