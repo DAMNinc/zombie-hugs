@@ -30,8 +30,8 @@
     "gulp-rename": "^1.4.0",
     "gulp-uglify": "^3.0.1",
     "jshint": "^2.9.7",
-    "webpack": "^4.28.4",
-    "webpack-stream": "^5.2.1"
+    "webpack": "^5.75.0",
+    "webpack-stream": "^7.0.0"
   },
   "repository": {
     "type": "git",
