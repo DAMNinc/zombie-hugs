@@ -53,7 +53,7 @@ app.get('/game/:game', function(req, res) {
 });
 
 app.get('/zombies', function(req, res) {
-  res.render('zombies');
+  res.render('zombies', { version });
 });
 
 io.on('connection', function(socket) {
