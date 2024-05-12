@@ -685,7 +685,7 @@ ROME.AnimalAnimationData = {
 
 function randomizeColors( colors, variations ) {
 
-	var i, il, c, hd, sd, vd;
+	let i, il, c, hd, sd, vd;
 
 	for( i = 0, il = colors.length; i < il; i++ ) {
 
@@ -707,6 +707,7 @@ function randomizeColors( colors, variations ) {
  */
 export default function Fox(direction, zombieModel) {
     this.offset = zombieModel.offset;
+		this.health = zombieModel.health;
 
     this.direction = direction || -1;
     this.speed = 300;
