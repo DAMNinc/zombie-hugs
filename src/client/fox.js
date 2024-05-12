@@ -705,10 +705,12 @@ function randomizeColors( colors, variations ) {
 /**
  * Represents a fox.
  */
-export default function Fox(direction, zombieModel) {
+export default function Fox(direction, zombieModel, name) {
     this.offset = zombieModel.offset;
-
+	
     this.direction = direction || -1;
+	this.name = name;
+	
     this.speed = 300;
     this.foxObj = new ROME.Animal(zombieModel.model.geometry, true);
     this.foxObj.play(this.foxObj.availableAnimals[0], this.foxObj.availableAnimals[0]);

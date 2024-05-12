@@ -6,8 +6,9 @@
  * Represents a playable character.
  * The character is controllable with keyboard and mouse.
  */
-export default function Player(id, position, direction, playerMesh, weapon) {
+export default function Player(id, name, position, direction, playerMesh, weapon) {
   this.id = id;
+  this.name = name;
   this.direction = direction;
 
   this.forward = false;
