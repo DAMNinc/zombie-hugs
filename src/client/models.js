@@ -1,5 +1,7 @@
 'use strict';
 
+import Constants, { healthFromCode } from './constants';
+
 const THREE = require('three');
 
 export default function Models() {
@@ -30,13 +32,13 @@ Models.prototype.isReady = function() {
   return this.missing == 0;
 };
 Models.prototype.getZombie = function() {
-  return { model: this.fox, offset: { x: 0, y: 0, z: 0 }, health: 1 };
+  return { model: this.fox, offset: { x: 0, y: 0, z: 0 }, health: healthFromCode(Constants.FOX) };
 };
 Models.prototype.getFlamingo = function() {
-  return { model: this.flamingo, offset: { x: 0, y: 50, z: 0 }, health: 1 };
+  return { model: this.flamingo, offset: { x: 0, y: 50, z: 0 }, health: healthFromCode(Constants.FLAMINGO) };
 };
 Models.prototype.getHorse = function() {
-  return { model: this.horse, offset: { x: 0, y: -10, z: 0 }, health: 2 };
+  return { model: this.horse, offset: { x: 0, y: -10, z: 0 }, health: healthFromCode(Constants.HORSE) };
 };
 Models.prototype.getPlayer = function(direction) {  
   var material = new THREE.MeshFaceMaterial( this.player.materials );

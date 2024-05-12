@@ -141,11 +141,11 @@ CamController.prototype.toggleMovement = function(keyCode, directionBool) {
 
 CamController.prototype.fire = function() {
   if (socket) {
-    var delay = Util.getWeaponDelay(this.weapon);
-    var now = new Date().getTime();
+    const delay = Util.getWeaponDelay(this.weapon);
+    const now = new Date().getTime();
     if (now - lastShot > delay) {
       lastShot = now;
-      socket.emit('fire', camera.position);
+      socket.emit('fire', camera.position, this.weapon);
     }
   }
 };
