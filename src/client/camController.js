@@ -39,7 +39,7 @@ export default function CamController(cam, sock, direction) {
   };
 
   var selectWeapon = function(keyCode) {
-    var code = Util.getWeaponCode(keyCode);
+    const code = Util.getWeaponCode(keyCode);
     if (code && socket && self.weapon !== code) {
       console.log('Changed weapon from ' + self.weapon + ' to ' + code);
       socket.emit('weapon.set', code);

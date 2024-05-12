@@ -24,11 +24,11 @@ let camera = null,
   socket = io();
 
 function updateGameState(elapsed) {
-  for (var key in gameState.players) {
+  for (let key in gameState.players) {
     gameState.players[key].update(elapsed);
   }
 
-  for (var key in gameState.zombies) {
+  for (let key in gameState.zombies) {
     gameState.zombies[key].update(elapsed);
   }
 
@@ -51,13 +51,13 @@ function handleResize() {
 }
 
 function removeZombie(zombieId) {
-  var zombie = gameState.zombies[zombieId];
+  const zombie = gameState.zombies[zombieId];
   scene.remove(zombie.getMesh());
   delete gameState.zombies[zombieId];
 }
 
 function getZombieModelFromCode(code) {
-  var zombieModel;
+  let zombieModel;
   switch (code) {
     case Constants.FOX:
       zombieModel = models.getZombie();
@@ -94,17 +94,17 @@ function setWeapon(player, code) {
   console.log('called for ' + player.name);
   var zombieModel = getZombieModelFromCode(code);
 
-  var startPosition = { x: player.getMesh().position.x, y: player.getMesh().position.y, z: player.getMesh().position.z };
+  const startPosition = { x: player.getMesh().position.x, y: player.getMesh().position.y, z: player.getMesh().position.z };
   startPosition.z += player.getDirection() * -1 * 100;
   startPosition.y += 50;
   startPosition.x += player.getDirection() * -1 * 25;
 
-  var currentWeaponMesh = player.getCurrentWeapon();
+  const currentWeaponMesh = player.getCurrentWeapon();
   if (currentWeaponMesh) {
     scene.remove(currentWeaponMesh.getMesh());
   }
 
-  var fox = createFoxFromModel(player.getDirection() * -1, startPosition, zombieModel);
+  const fox = createFoxFromModel(player.getDirection() * -1, startPosition, zombieModel);
   fox.setSpeed(0);
   fox.getMesh().scale.set(0.25, 0.25, 0.25);
   scene.add(fox.getMesh());
@@ -117,7 +117,7 @@ function setupEvents() {
   socket.on('zombie', function (zombie, playerId) {
     console.log('Zombie added for ' + playerId, zombie);
 
-    var zombieModel = getZombieModelFromCode(gameState.players[playerId].getWeaponCode());
+    const zombieModel = getZombieModelFromCode(gameState.players[playerId].getWeaponCode());
 
     var fox = createFoxFromModel(zombie.direction, zombie.position, zombieModel, zombie.name);
 
@@ -181,9 +181,9 @@ function setupEvents() {
   });
 
   socket.on('state', function (state) {
-    for (var key in state.zombies) {
-      var serverZombie = state.zombies[key];
-      var clientZombie = gameState.zombies[key];
+    for (let key in state.zombies) {
+      const serverZombie = state.zombies[key];
+      const clientZombie = gameState.zombies[key];
       if (!serverZombie || !clientZombie) {
         return console.error('Server zombie or client zombie missing!');
       }
@@ -209,8 +209,17 @@ function setupEvents() {
 
     gameState.explosions.push(new Explosion(scene, zombie1.getMesh().position));
 
-    removeZombie(zombieId1);
-    removeZombie(zombieId2);
+    zombie1.health -= 1;
+    console.info('Zombie1 health: ' + zombie1.health);
+    if (zombie1.health <= 0) {
+      removeZombie(zombieId1);
+    }
+
+    zombie2.health -= 1;
+    console.info('Zombie2 health: ' + zombie2.health);
+    if (zombie2.health <= 0) {
+      removeZombie(zombieId2);
+    }
   });
 
   socket.on('zombie.out-of-bounds', function (zombieId) {
@@ -263,15 +272,15 @@ function init(renderAreaId) {
     explosions: []
   };
 
-  var terrain = new Terrain(128, 128, camera.position.y);
+  const terrain = new Terrain(128, 128, camera.position.y);
   scene.add(terrain.getMesh());
 
-  var explosion = new Explosion(scene, { x: 0, y: 0, z: 0 });
+  const explosion = new Explosion(scene, { x: 0, y: 0, z: 0 });
   gameState.explosions.push(explosion);
 
   // Init renderer and add its DOM element to the given render area.
   renderer = new THREE.WebGLRenderer({ alpha: true });
-  var renderArea = document.getElementById(renderAreaId);
+  const renderArea = document.getElementById(renderAreaId);
   if (renderArea.hasChildNodes()) {
     renderArea.removeChild(renderArea.childNodes[0]);
   }
@@ -309,7 +318,7 @@ function joinPlayer(gameId) {
     joinSpectator(gameId);
 
     // Tell the window about it. Someone might be listening :-)
-    var ev = new Event('join.spectator.full');
+    const ev = new Event('join.spectator.full');
     window.dispatchEvent(ev);
   });
 
