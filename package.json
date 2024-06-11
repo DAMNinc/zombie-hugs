@@ -26,8 +26,8 @@
   "license": "MIT",
   "devDependencies": {
     "del": "^3.0.0",
-    "gulp": "^4.0.0",
-    "gulp-nodemon": "^2.4.2",
+    "gulp": "^5.0.0",
+    "gulp-nodemon": "^2.5.0",
     "gulp-rename": "^1.4.0",
     "gulp-uglify": "^3.0.1",
     "jshint": "^2.9.7",
