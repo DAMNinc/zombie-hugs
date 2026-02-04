@@ -14,7 +14,12 @@ export default defineConfig({
       output: {
         entryFileNames: 'js/[name].js',
         chunkFileNames: 'js/[name].js',
-        assetFileNames: 'assets/[name].[ext]'
+        assetFileNames: 'assets/[name].[ext]',
+        format: 'iife',
+        name: 'ZombieHugsBundle',
+        globals: {
+          three: 'THREE'
+        }
       },
       external: ['three']
     }
