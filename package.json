@@ -2,7 +2,7 @@
   "name": "zombie-hugs",
   "version": "0.3.0",
   "description": "DAMN good zombie game",
-  "main": "dist/zombie.js",
+  "main": "dist/server.js",
   "dependencies": {
     "body-parser": "^2.2.2",
     "express": "^5.2.1",
@@ -17,9 +17,13 @@
     "node": "^20.13.1"
   },
   "scripts": {
-    "build": "gulp dist",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "tsc",
+    "dev:client": "vite",
+    "dev:server": "tsc --watch",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node dist/server.js"
   },
   "keywords": [],
   "author": "DAMN Inc.",
@@ -29,18 +33,10 @@
     "@types/node": "^25.2.0",
     "@types/three": "^0.182.0",
     "@vitejs/plugin-legacy": "^7.2.1",
-    "del": "^3.0.0",
-    "gulp": "^4.0.0",
-    "gulp-nodemon": "^2.4.2",
-    "gulp-rename": "^1.4.0",
-    "gulp-uglify": "^3.0.1",
-    "jshint": "^2.9.7",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vite-plugin-handlebars": "^2.0.0",
-    "vite-plugin-static-copy": "^3.2.0",
-    "webpack": "^5.91.0",
-    "webpack-stream": "^7.0.0"
+    "vite-plugin-static-copy": "^3.2.0"
   },
   "repository": {
     "type": "git",

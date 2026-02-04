@@ -76,15 +76,15 @@ class Game {
   /**
    * Emits an event to all game listeners, both players and spectators.
    */
-  emitAll(...args: any[]): void {
+  emitAll(event: string, ...args: any[]): void {
     for (const key in this.players) {
       const player = this.players[key];
-      player.socket.emit.apply(player.socket, args);
+      player.socket.emit(event, ...args);
     }
 
     for (const key in this.spectators) {
       const spectator = this.spectators[key];
-      spectator.socket.emit.apply(spectator.socket, args);
+      spectator.socket.emit(event, ...args);
     }
   }
 
@@ -97,7 +97,8 @@ class Game {
     // If there are already 2 players, send a join error to the client.
     if (Object.keys(this.players).length >= 2) {
       logger.info('%s cannot join game %s as player. Game is full', player.name, this.id);
-      return player.socket.emit('join.error.full');
+      player.socket.emit('join.error.full');
+      return;
     }
 
     logger.info('%s joined game %s as player', player.name, this.id);

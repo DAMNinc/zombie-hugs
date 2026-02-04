@@ -1,7 +1,5 @@
-'use strict';
-
-const THREE = require('three');
-const { io } = require('socket.io-client');
+import * as THREE from 'three';
+import { io, Socket } from 'socket.io-client';
 import Models from "./models";
 import Player from "./player";
 import Constants from "./constants";
@@ -12,18 +10,39 @@ import Fox from './fox';
 import console from './console';
 import Score from './score';
 
-let camera = null,
-  camController = null,
-  scene = null,
-  renderer = null,
-  gameState = null,
-  models = null,
-  clock = null,
-  animationId = null,
-  animating = false,
-  socket = io();
+interface Position {
+  x: number;
+  y: number;
+  z: number;
+}
 
-function updateGameState(elapsed) {
+interface GameState {
+  myId: string | null;
+  players: { [key: string]: Player };
+  zombies: { [key: string]: Fox };
+  explosions: Explosion[];
+  game?: any;
+}
+
+interface StartParams {
+  renderAreaId: string;
+  exitButtonId: string;
+  gameId: number;
+  isSpectator: boolean;
+}
+
+let camera: THREE.PerspectiveCamera | null = null;
+let camController: CamController | null = null;
+let scene: THREE.Scene | null = null;
+let renderer: THREE.WebGLRenderer | null = null;
+let gameState: GameState | null = null;
+let models: Models | null = null;
+let clock: THREE.Clock | null = null;
+let animationId: number | null = null;
+let animating = false;
+const socket: Socket = io();
+
+function updateGameState(elapsed: number): void {
   for (let key in gameState.players) {
     gameState.players[key].update(elapsed);
   }
@@ -44,19 +63,22 @@ function updateGameState(elapsed) {
 /**
  * Handle a resize of the viewport
  */
-function handleResize() {
+function handleResize(): void {
+  if (!camera || !renderer) return;
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function removeZombie(zombieId) {
+function removeZombie(zombieId: string): void {
+  if (!gameState || !scene) return;
   const zombie = gameState.zombies[zombieId];
   scene.remove(zombie.getMesh());
   delete gameState.zombies[zombieId];
 }
 
-function getZombieModelFromCode(code) {
+function getZombieModelFromCode(code: number): any {
+  if (!models) return null;
   let zombieModel;
   switch (code) {
     case Constants.FOX:
@@ -72,7 +94,7 @@ function getZombieModelFromCode(code) {
   return zombieModel;
 }
 
-function createFoxFromModel(direction, position, model, name) {
+function createFoxFromModel(direction: number, position: Position, model: any, name?: string): Fox {
   var fox = new Fox(direction, model, name);
 
   // Set the fox at the mesh position.
@@ -90,7 +112,8 @@ function createFoxFromModel(direction, position, model, name) {
   return fox;
 }
 
-function setWeapon(player, code) {
+function setWeapon(player: Player, code: number): void {
+  if (!models || !scene) return;
   console.log('called for ' + player.name);
   var zombieModel = getZombieModelFromCode(code);
 
@@ -112,9 +135,10 @@ function setWeapon(player, code) {
   player.setWeapon(code, fox);
 }
 
-function setupEvents() {
+function setupEvents(): void {
   // Event for receiving information about zombies.
-  socket.on('zombie', function (zombie, playerId) {
+  socket.on('zombie', function (zombie: any, playerId: string) {
+    if (!gameState || !models || !scene) return;
     console.log('Zombie added for ' + playerId, zombie);
 
     const zombieModel = getZombieModelFromCode(gameState.players[playerId].getWeaponCode());
@@ -131,7 +155,8 @@ function setupEvents() {
   // Event for receiving player information from the server.
   // Used for signalling how the server perceives this player.
   // This event will not be emitted for spectators.
-  socket.on('player', function (player) {
+  socket.on('player', function (player: any) {
+    if (!gameState || !models || !camera) return;
     gameState.myId = player.id;
     console.info('I am: ' + player.name);
 
@@ -151,7 +176,8 @@ function setupEvents() {
   });
 
   // Event for receiving opponent information from the server.
-  socket.on('opponent', function (player) {
+  socket.on('opponent', function (player: any) {
+    if (!gameState || !models || !scene) return;
     console.info('The opponent has joined the game: ' + player.name);
 
     var p = new Player(player.id, player.name, player.position, player.direction, models.getPlayer(player.direction));
@@ -166,21 +192,24 @@ function setupEvents() {
   });
 
   // Event for receiving spectator information from the server.
-  socket.on('spectator', function (player) {
+  socket.on('spectator', function (player: any) {
     console.info('A spectator has joined...');
   });
 
-  socket.on('move.start', function (keyCode, playerId) {
+  socket.on('move.start', function (keyCode: number, playerId: string) {
+    if (!gameState) return;
     console.log('Player move start', keyCode, playerId);
     gameState.players[playerId].toggleMovement(keyCode, true);
   });
 
-  socket.on('move.end', function (keyCode, playerId) {
+  socket.on('move.end', function (keyCode: number, playerId: string) {
+    if (!gameState) return;
     console.log('Player move end', keyCode, playerId);
     gameState.players[playerId].toggleMovement(keyCode, false);
   });
 
-  socket.on('state', function (state) {
+  socket.on('state', function (state: any) {
+    if (!gameState) return;
     for (let key in state.zombies) {
       const serverZombie = state.zombies[key];
       const clientZombie = gameState.zombies[key];
@@ -202,7 +231,8 @@ function setupEvents() {
     }
   });
 
-  socket.on('zombie.collision', function (zombieId1, zombieId2) {
+  socket.on('zombie.collision', function (zombieId1: string, zombieId2: string) {
+    if (!gameState || !scene) return;
     const zombie1 = gameState.zombies[zombieId1];
     const zombie2 = gameState.zombies[zombieId2];
     console.info('Collision between ' + zombie1.name + ' and ' + zombie2.name);
@@ -222,13 +252,15 @@ function setupEvents() {
     }
   });
 
-  socket.on('zombie.out-of-bounds', function (zombieId) {
+  socket.on('zombie.out-of-bounds', function (zombieId: string) {
+    if (!gameState) return;
     const zombie = gameState.zombies[zombieId];
     console.info(zombie.name + ' has left the building!');
     removeZombie(zombieId);
   });
 
-  socket.on('weapon.set', function (code, playerId) {
+  socket.on('weapon.set', function (code: number, playerId: string) {
+    if (!gameState) return;
     var player = gameState.players[playerId];
 
     console.info(player.name + ' switch to ' + code);
@@ -236,7 +268,8 @@ function setupEvents() {
     setWeapon(player, code);
   });
 
-  socket.on('player.exit', function (playerId) {
+  socket.on('player.exit', function (playerId: string) {
+    if (!gameState || !scene) return;
     var player = gameState.players[playerId];
     console.info('Player exited!', player.name);
     scene.remove(player.getMesh());
@@ -247,7 +280,7 @@ function setupEvents() {
 /**
  * Initializes the scene, renderer and game state.
  */
-function init(renderAreaId) {
+function init(renderAreaId: string): void {
   // load models
   models = new Models();
 
@@ -255,7 +288,7 @@ function init(renderAreaId) {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
 
-  var hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 10);
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 10);
   hemiLight.color.setHSL(0.6, 1, 0.6);
   hemiLight.groundColor.setHSL(0.095, 1, 0.75);
   hemiLight.position.set(0, 500, 0);
@@ -281,6 +314,7 @@ function init(renderAreaId) {
   // Init renderer and add its DOM element to the given render area.
   renderer = new THREE.WebGLRenderer({ alpha: true });
   const renderArea = document.getElementById(renderAreaId);
+  if (!renderArea) return;
   if (renderArea.hasChildNodes()) {
     renderArea.removeChild(renderArea.childNodes[0]);
   }
@@ -294,10 +328,11 @@ function init(renderAreaId) {
 /**
  * Animates everything.
  */
-function animate() {
+function animate(): void {
+  if (!clock || !renderer || !scene || !camera) return;
   if (animating) {
     // clock.getDelta returns the time in seconds since last call.
-    var elapsed = clock.getDelta();
+    const elapsed = clock.getDelta();
     updateGameState(elapsed);
 
     // Re-animate and render.
@@ -309,7 +344,7 @@ function animate() {
 /**
  * Tells the game that a player wants to join the current game.
  */
-function joinPlayer(gameId) {
+function joinPlayer(gameId: number): void {
   // Tell the server that we would like to join as a player. This might not be
   // possible if there are already two players so listen for a join error event
   socket.on('join.error.full', function () {
@@ -328,62 +363,75 @@ function joinPlayer(gameId) {
 /**
  * Tells the game that a player wants to join as spectator.
  */
-function joinSpectator(gameId) {
+function joinSpectator(gameId: number): void {
+  if (!camera) return;
   socket.emit('join.spectator', { gameId: gameId });
   camController = new CamController(camera);
 }
 
-function exitGame(gameId) {
+function exitGame(gameId: number): void {
   socket.emit('exit', { gameId: gameId });
   window.location.href = '/';
 }
 
-function ZombieHugs() { }
+class ZombieHugs {
+  pingInterval?: NodeJS.Timeout;
 
-/**
- * Starts the game.
- */
-ZombieHugs.prototype.start = function (params) {
-  // Cancel the previous animation loop.
-  if (animationId !== null) cancelAnimationFrame(animationId);
-  init(params.renderAreaId);
-  document.getElementById(params.exitButtonId)
-    .addEventListener('click', () => {
-      exitGame(params.gameId);
-    });
-
-  // wait until models have been loaded
-
-  const checkReady = () => {
-    if (!models.isReady()) {
-      console.log("Waiting for models...");
-      setTimeout(checkReady, 1000);
-    } else {
-      console.log("Models loaded");
-      gameState.game = this;
-      setupEvents();
-      animating = true;
-      animate();
-
-      // Join as spectator or player
-      if (params.isSpectator) {
-        joinSpectator(params.gameId);
-      } else {
-        joinPlayer(params.gameId);
-      }
+  /**
+   * Starts the game.
+   */
+  start(params: StartParams): void {
+    // Cancel the previous animation loop.
+    if (animationId !== null) cancelAnimationFrame(animationId);
+    init(params.renderAreaId);
+    const exitButton = document.getElementById(params.exitButtonId);
+    if (exitButton) {
+      exitButton.addEventListener('click', () => {
+        exitGame(params.gameId);
+      });
     }
-  };
 
-  this.pingInterval = setInterval(() => {
-    // 'ping' is reserved...
-    socket.emit('pingpong');
-  }, 1000);
+    // wait until models have been loaded
 
-  checkReady();
-};
+    const checkReady = () => {
+      if (!models || !models.isReady()) {
+        console.log("Waiting for models...");
+        setTimeout(checkReady, 1000);
+      } else {
+        console.log("Models loaded");
+        if (gameState) {
+          gameState.game = this;
+        }
+        setupEvents();
+        animating = true;
+        animate();
 
-ZombieHugs.prototype.stop = function () {
-  animating = false;
-};
+        // Join as spectator or player
+        if (params.isSpectator) {
+          joinSpectator(params.gameId);
+        } else {
+          joinPlayer(params.gameId);
+        }
+      }
+    };
 
-window.ZombieHugs = new ZombieHugs();
+    this.pingInterval = setInterval(() => {
+      // 'ping' is reserved...
+      socket.emit('pingpong');
+    }, 1000);
+
+    checkReady();
+  }
+
+  stop(): void {
+    animating = false;
+  }
+}
+
+declare global {
+  interface Window {
+    ZombieHugs: ZombieHugs;
+  }
+}
+
+(window as any).ZombieHugs = new ZombieHugs();

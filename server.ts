@@ -3,10 +3,13 @@ import { engine } from 'express-handlebars';
 import bodyParser from 'body-parser';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import logger from './lib/logger';
 import { setupSocket, games, newGame } from './lib/controller';
 
-const version = require('./package.json').version;
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+const version = packageJson.version;
 
 const app = express();
 const server = createServer(app);

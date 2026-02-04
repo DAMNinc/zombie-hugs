@@ -2,9 +2,15 @@
  * @author Mikael Emtinger
  * Apache license from ROME project.
  */
-const THREE = require('three');
+import * as THREE from 'three';
 
-ROME = window.ROME = {};
+declare global {
+  interface Window {
+    ROME: any;
+  }
+}
+
+const ROME: any = window.ROME = {};
 
 
 // animal
@@ -705,35 +711,44 @@ function randomizeColors( colors, variations ) {
 /**
  * Represents a fox.
  */
-export default function Fox(direction, zombieModel, name) {
-    this.offset = zombieModel.offset;
-	this.health = zombieModel.health;
-    this.direction = direction || -1;
-	this.name = name;
-	
-    this.speed = 300;
-    this.foxObj = new ROME.Animal(zombieModel.model.geometry, true);
-    this.foxObj.play(this.foxObj.availableAnimals[0], this.foxObj.availableAnimals[0]);
-    this.foxObj.animalA.timeScale = this.foxObj.animalB.timeScale = 0.9;
-};
+export default class Fox {
+    offset: { x: number; y: number; z: number };
+    health: number;
+    direction: number;
+    name: string;
+    speed: number;
+    foxObj: any;
 
-Fox.prototype.setSpeed = function(speed) {
-	this.speed = speed;
+    constructor(direction: number, zombieModel: any, name?: string) {
+        this.offset = zombieModel.offset;
+        this.health = zombieModel.health;
+        this.direction = direction || -1;
+        this.name = name || '';
+        
+        this.speed = 300;
+        this.foxObj = new ROME.Animal(zombieModel.model.geometry, true);
+        this.foxObj.play(this.foxObj.availableAnimals[0], this.foxObj.availableAnimals[0]);
+        this.foxObj.animalA.timeScale = this.foxObj.animalB.timeScale = 0.9;
+    }
+
+    setSpeed(speed: number): void {
+        this.speed = speed;
+    }
+
+    update(elapsed: number): void {
+        this.foxObj.mesh.position.z += elapsed * this.speed * this.direction;
+        this.foxObj.update(elapsed*1000);
+    }
+
+    getMesh(): THREE.Mesh {
+        return this.foxObj.mesh;
+    }
+
+    getPosition(): THREE.Vector3 {
+        return this.foxObj.mesh.position;
+    }
+
+    setPosition(position: { x: number; y: number; z: number }): void {
+        this.foxObj.mesh.position.set(position.x + this.offset.x, position.y-50 + this.offset.y, position.z + this.offset.z);
+    }
 }
-
-Fox.prototype.update = function(elapsed) {
-    this.foxObj.mesh.position.z += elapsed * this.speed * this.direction;
-    this.foxObj.update(elapsed*1000);
-};
-
-Fox.prototype.getMesh = function() {
-    return this.foxObj.mesh;
-};
-
-Fox.prototype.getPosition = function() {
-  return this.foxObj.mesh.position;
-};
-
-Fox.prototype.setPosition = function(position) {
-  this.foxObj.mesh.position.set(position.x + this.offset.x, position.y-50 + this.offset.y, position.z + this.offset.z);
-};
