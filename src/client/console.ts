@@ -8,7 +8,7 @@ class Console {
     const consoleElem = document.getElementById('console');
     if (consoleElem) {
       consoleElem.scrollTop = consoleElem.scrollHeight;
-      consoleElem.append(text + '\n');
+      consoleElem.textContent += text + '\n';
     }
   }
 

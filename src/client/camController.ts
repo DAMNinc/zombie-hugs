@@ -16,7 +16,7 @@ export default class CamController {
   forward?: boolean;
   backward?: boolean;
 
-  constructor(cam: THREE.Camera, sock: Socket | null, direction: number) {
+  constructor(cam: THREE.Camera, sock: Socket | null = null, direction: number = 1) {
     // TODO: Consider using THREE.FirstPersonControls?
 
     camera = cam;
@@ -72,9 +72,8 @@ export default class CamController {
           break;
         default:
           endMovement(keyCode);
+          break;
       }
-
-      endMovement(keyEvent.keyCode);
     };
 
     const mouseClickEvent = function() {

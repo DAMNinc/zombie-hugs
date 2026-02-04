@@ -397,7 +397,7 @@ class Zombie {
   health: number;
 
   constructor(name: string, position: Position, direction: number, firedByPlayer: string, health: number = 1) {
-    this.id = crypto.pseudoRandomBytes(4).toString('hex');
+    this.id = crypto.randomBytes(4).toString('hex');
     this.name = name;
     this.position = position;
     this.direction = direction;

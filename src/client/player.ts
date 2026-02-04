@@ -28,7 +28,7 @@ export default class Player {
   weapon: Weapon | null;
   score: number;
 
-  constructor(id: string, name: string, position: Position, direction: number, playerMesh: THREE.Mesh, weapon: Weapon) {
+  constructor(id: string, name: string, position: Position, direction: number, playerMesh: THREE.Mesh, weapon?: Weapon) {
     this.id = id;
     this.name = name;
     this.direction = direction;
@@ -41,7 +41,7 @@ export default class Player {
     this.mesh = playerMesh;
     
     this.weaponCode = 1;
-    this.weapon = weapon;
+    this.weapon = weapon || null;
 
     this.mesh.position.x = position.x;
     this.mesh.position.y = position.y - 40;

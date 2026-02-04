@@ -43,6 +43,7 @@ let animating = false;
 const socket: Socket = io();
 
 function updateGameState(elapsed: number): void {
+  if (!gameState) return;
   for (let key in gameState.players) {
     gameState.players[key].update(elapsed);
   }

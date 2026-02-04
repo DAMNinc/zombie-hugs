@@ -30,7 +30,7 @@ app.engine('handlebars', hbs);
 app.set('view engine', 'handlebars');
 
 app.set('port', (process.env.PORT || 3000));
-app.use(express.static(__dirname + '/public'));
+app.use(express.static(join(__dirname, '../public')));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 

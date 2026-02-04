@@ -16,7 +16,7 @@ function generateHeight(): Uint8Array {
 	for (let j = 0; j < 4; j ++) {
 		for (let i = 0; i < size; i ++) {
 			const x = i % terrainWidth;
-      const y = ~~ ( i / terrainWidth );
+      const y = Math.floor(i / terrainWidth);
 			data[i] += Math.abs(perlin.noise(x / quality, y / quality, z) * quality * 1.75);
 		}
 
@@ -120,7 +120,7 @@ export default class Terrain {
 
     for (let i = 0, j = 0, l = vertices.length; i < l; i ++, j += 3) {
       const x = i % terrainWidth;
-      const y = ~~ ( i / terrainWidth );
+      const y = Math.floor(i / terrainWidth);
       if (x > terrainWidth / 4 && x < 3 * terrainWidth / 4 && y > terrainHeight / 4 && y < 3 * terrainHeight / 4) {
         vertices[j + 1] = this.yOffset - 50; // flat terrain for the foxy fox!
       } else {
