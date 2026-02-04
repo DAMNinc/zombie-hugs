@@ -3,10 +3,41 @@ zombie-hugs
 
 Fire those zombies away (actually, it's foxes right now).
 
-To run the server:
+## Development
+
+This project uses TypeScript and Vite for building.
+
+### Prerequisites
+
+- Node.js 20.x or higher
+
+### Installation
 
     $ npm install
-    $ node_modules/.bin/gulp
+
+### Building
+
+Build both client and server:
+
+    $ npm run build
+
+Or build them separately:
+
+    $ npm run build:client  # Build client with Vite
+    $ npm run build:server  # Compile TypeScript server
+
+### Running
+
+To run the server:
+
+    $ npm start
+
+For development, you can use:
+
+    $ npm run dev:client  # Start Vite dev server
+    $ npm run dev:server  # Watch and recompile TypeScript
+
+Then access the game at http://localhost:3000
 
 [Example server](https://zombie-hugs.onrender.com/).
 
