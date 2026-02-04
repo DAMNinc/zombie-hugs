@@ -282,6 +282,8 @@ ROME.AnimalAnimationData = {
   // init frame times and indices
 
   init: function (geometry: any, parseMorphTargetNames: boolean) {
+    let material: any;
+
     if (!geometry.initialized) {
       geometry.initialized = true;
 
@@ -356,7 +358,7 @@ ROME.AnimalAnimationData = {
 
       // create material
 
-      const material = new THREE.ShaderMaterial({
+      material = new THREE.ShaderMaterial({
         uniforms: ROME.AnimalShader.uniforms(),
         attributes: ROME.AnimalShader.attributes(),
         vertexShader: ROME.AnimalShader.vertexShader,
@@ -461,7 +463,7 @@ ROME.AnimalAnimationData = {
     } else {
       // create material
 
-      const material = new THREE.ShaderMaterial({
+      material = new THREE.ShaderMaterial({
         uniforms: ROME.AnimalShader.uniforms(),
         attributes: {},
         vertexShader: ROME.AnimalShader.vertexShader,
@@ -496,7 +498,7 @@ ROME.AnimalAnimationData = {
 
     return {
       availableAnimals: geometry.availableAnimals,
-      material: (material as any) !== undefined ? material : undefined,
+      material: material,
     };
   },
 };
