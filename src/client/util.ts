@@ -1,11 +1,8 @@
-'use strict';
-
 import Constants from './constants';
 
 export default class Util {
-
-  static getWeaponCode(keyCode) {
-    var code;
+  static getWeaponCode(keyCode: number): number | undefined {
+    let code: number | undefined;
     switch (keyCode) {
       case 49:
       case 97: // numeric keypad 1
@@ -23,9 +20,9 @@ export default class Util {
     return code;
   }
 
-  static getWeaponDelay(weapon) {
-    var delay = 0;
-    switch(weapon) {
+  static getWeaponDelay(weapon: number): number {
+    let delay = 0;
+    switch (weapon) {
       case Constants.FOX:
         delay = 1000;
         break;
@@ -38,5 +35,4 @@ export default class Util {
     }
     return delay;
   }
-
 }
