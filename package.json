@@ -20,7 +20,7 @@
     "build:assets": "mkdir -p public/css public/fonts public/content && cp -r src/css/* public/css/ && cp -r src/fonts/* public/fonts/ && cp -r src/content/* public/content/",
     "build": "npm run build:assets && npm run build:client && npm run build:server",
     "start": "node dist/server.js",
-    "dev": "tsx watch server.ts",
+    "dev": "npm run build:assets && (vite build --watch & tsx watch server.ts)",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
