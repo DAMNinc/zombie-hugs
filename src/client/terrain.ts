@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import ImprovedNoise from './ImprovedNoise';
 
 let terrainWidth: number = 0;

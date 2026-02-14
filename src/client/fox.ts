@@ -3,6 +3,8 @@
  * Apache license from ROME project.
  */
 
+import * as THREE from 'three';
+
 window.ROME = {};
 
 // animal

@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { io } from 'socket.io-client';
 import Models from './models';
 import Player from './player';
@@ -8,6 +9,9 @@ import Terrain from './terrain';
 import Fox from './fox';
 import gameConsole from './console';
 import Score from './score';
+
+// Expose THREE globally for non-bundled scripts (gallery.js)
+(window as any).THREE = THREE;
 
 let camera: any = null;
 let camController: CamController | null = null;

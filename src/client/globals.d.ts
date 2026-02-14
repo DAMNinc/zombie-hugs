@@ -1,7 +1,7 @@
 /* eslint-disable no-var */
 
-// THREE.js is loaded from CDN (r71) as a global
-declare const THREE: any;
+// three@0.71.0 has no bundled types
+declare module 'three';
 
 // jQuery is loaded from CDN as a global
 declare const jQuery: any;

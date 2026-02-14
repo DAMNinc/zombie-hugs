@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import Constants, { healthFromCode } from './constants';
 
 export default class Models {

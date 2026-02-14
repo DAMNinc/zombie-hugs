@@ -268,7 +268,7 @@ class Player {
     direction: number,
     weaponCode: number = 1,
   ) {
-    this.id = socket.id;
+    this.id = socket.id ?? '';
     this.name = name;
     this.position = { x, y, z };
     this.direction = direction;

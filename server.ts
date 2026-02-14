@@ -7,8 +7,14 @@ import { Server } from 'socket.io';
 import logger from './lib/logger';
 import controller from './lib/controller';
 
+const PROJECT_ROOT = process.cwd();
+
+if (!fs.existsSync(path.join(PROJECT_ROOT, 'package.json'))) {
+  throw new Error(`package.json not found in ${PROJECT_ROOT}. Server must be started from the project root.`);
+}
+
 const pkg = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')
+  fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf-8')
 );
 const version: string = pkg.version;
 
@@ -29,10 +35,10 @@ const hbs = create({
 
 app.engine('handlebars', hbs.engine);
 app.set('view engine', 'handlebars');
-app.set('views', path.join(process.cwd(), 'views'));
+app.set('views', path.join(PROJECT_ROOT, 'views'));
 
 app.set('port', process.env.PORT || 3000);
-app.use(express.static(path.join(process.cwd(), 'public')));
+app.use(express.static(path.join(PROJECT_ROOT, 'public')));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
