@@ -3,6 +3,8 @@ export default class Constants {
   static get HORSE(): number { return 2; }
   static get FLAMINGO(): number { return 3; }
   static get ZOMBIE(): number { return 4; }
+  static get HORDE(): number { return 5; }
+  static get MAX_HP(): number { return 10; }
 }
 
 export function healthFromCode(code: number): number {
@@ -15,6 +17,8 @@ export function healthFromCode(code: number): number {
       return 1;
     case Constants.ZOMBIE:
       return 3;
+    case Constants.HORDE:
+      return 1;
     default:
       return 1;
   }

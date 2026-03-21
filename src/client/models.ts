@@ -70,6 +70,10 @@ export default class Models {
     return { model: this.zombie, offset: { x: 0, y: -10, z: 0 }, health: healthFromCode(Constants.ZOMBIE), scale: 15 };
   }
 
+  getHorde(): any {
+    return { model: this.fox, offset: { x: 0, y: 0, z: 0 }, health: healthFromCode(Constants.HORDE), scale: 0.4 };
+  }
+
   getPlayer(direction: number): any {
     const material = new THREE.MeshFaceMaterial(this.player.materials);
     const mesh = new THREE.Mesh(this.player.geometry, material);
