@@ -6,6 +6,10 @@ let socket: any = null;
 let spectatorMode = false;
 let lastShot = 0;
 
+// 3rd person camera settings
+const THIRD_PERSON_HEIGHT = 200;
+const THIRD_PERSON_BACK = 400;
+
 export default class CamController {
   direction: number;
   weapon: number;
@@ -13,6 +17,15 @@ export default class CamController {
   right: boolean;
   forward: boolean;
   backward: boolean;
+
+  // Charged shot state
+  private chargeStart: number = 0;
+  private charging: boolean = false;
+  onChargeUpdate: ((pct: number) => void) | null = null;
+
+  // Camera mode
+  private thirdPerson: boolean = false;
+  private firstPersonZ: number = 0;
 
   constructor(cam: any, sock: any, direction: number) {
     camera = cam;
@@ -26,19 +39,18 @@ export default class CamController {
     this.right = false;
     this.forward = false;
     this.backward = false;
+    this.firstPersonZ = camera.position.z;
 
     const self = this;
 
     const startMovement = (code: number) => {
       if (self.toggleMovement(code, true) && socket) {
-        console.log('Cam movement started', code);
         socket.emit('move.start', code);
       }
     };
 
     const endMovement = (code: number) => {
       if (self.toggleMovement(code, false) && socket) {
-        console.log('Cam movement ended', code);
         socket.emit('move.end', code);
       }
     };
@@ -46,7 +58,6 @@ export default class CamController {
     const selectWeapon = (keyCode: number) => {
       const code = Util.getWeaponCode(keyCode);
       if (code && socket && self.weapon !== code) {
-        console.log('Changed weapon from ' + self.weapon + ' to ' + code);
         socket.emit('weapon.set', code);
         self.weapon = code;
       }
@@ -54,27 +65,43 @@ export default class CamController {
 
     const keyDownEvent = (keyEvent: KeyboardEvent) => {
       startMovement(keyEvent.keyCode);
+
+      if (keyEvent.keyCode === 32 && !self.charging && socket) {
+        self.startCharge();
+      }
     };
 
     const keyUpEvent = (keyEvent: KeyboardEvent) => {
       const keyCode = keyEvent.keyCode;
 
+      if (keyCode === 32 && self.charging) {
+        self.releaseCharge();
+        endMovement(keyCode);
+        return;
+      }
+
       switch (keyCode) {
         case 49:
         case 50:
         case 51:
-        case 52: // 4 key - Zombie
-        case 53: // 5 key - Horde
-        case 97: // numeric keypad 1
-        case 98: // numeric keypad 2
-        case 99: // numeric keypad 3
-        case 100: // numeric keypad 4
-        case 101: // numeric keypad 5
+        case 52:
+        case 53:
+        case 97:
+        case 98:
+        case 99:
+        case 100:
+        case 101:
           selectWeapon(keyCode);
           break;
-        case 81: // Q key - Shield
-          if (socket) {
-            socket.emit('shield');
+        case 81: // Q - Shield
+          if (socket) socket.emit('shield');
+          break;
+        case 69: // E - Place Wall
+          if (socket) socket.emit('place.wall', camera.position.x);
+          break;
+        case 86: // V - Toggle camera view
+          if (!spectatorMode) {
+            self.toggleCameraMode();
           }
           break;
         default:
@@ -84,9 +111,18 @@ export default class CamController {
       endMovement(keyEvent.keyCode);
     };
 
-    const mouseClickEvent = () => {
-      console.log('Click');
-      self.fire();
+    const mouseDownEvent = () => {
+      if (!spectatorMode) {
+        self.startCharge();
+      }
+    };
+
+    const mouseUpEvent = () => {
+      if (self.charging) {
+        self.releaseCharge();
+      } else {
+        self.fire(0);
+      }
     };
 
     const touchStart = (e: TouchEvent) => {
@@ -98,13 +134,15 @@ export default class CamController {
         } else if (e.touches[0].clientX > window.innerWidth - window.innerWidth / 3) {
           startMovement(1);
         } else {
-          console.log('Touch "click"');
-          self.fire();
+          self.startCharge();
         }
       }
     };
 
     const touchEnd = (e: TouchEvent) => {
+      if (self.charging) {
+        self.releaseCharge();
+      }
       if (e.touches.length === 0) {
         endMovement(-1);
         endMovement(1);
@@ -113,7 +151,8 @@ export default class CamController {
 
     window.addEventListener('keydown', keyDownEvent);
     window.addEventListener('keyup', keyUpEvent);
-    window.addEventListener('click', mouseClickEvent);
+    window.addEventListener('mousedown', mouseDownEvent);
+    window.addEventListener('mouseup', mouseUpEvent);
     window.addEventListener('touchstart', touchStart);
     window.addEventListener('touchend', touchEnd);
   }
@@ -122,36 +161,72 @@ export default class CamController {
     return spectatorMode;
   }
 
+  isThirdPerson(): boolean {
+    return this.thirdPerson;
+  }
+
   selectWeaponByCode(code: number): void {
     if (socket && this.weapon !== code) {
-      console.log('Changed weapon from ' + this.weapon + ' to ' + code);
       socket.emit('weapon.set', code);
       this.weapon = code;
     }
   }
 
+  toggleCameraMode(): void {
+    this.thirdPerson = !this.thirdPerson;
+    if (!this.thirdPerson) {
+      // Snap back to first person
+      camera.position.z = this.firstPersonZ;
+      camera.position.y = 0;
+      camera.rotation.x = 0;
+      if (this.direction === -1) {
+        camera.rotation.y = Math.PI;
+      } else {
+        camera.rotation.y = 0;
+      }
+    }
+  }
+
+  private startCharge(): void {
+    this.charging = true;
+    this.chargeStart = Date.now();
+  }
+
+  private releaseCharge(): void {
+    if (!this.charging) return;
+    const chargeTime = Date.now() - this.chargeStart;
+    this.charging = false;
+    this.fire(chargeTime);
+  }
+
+  getChargePct(): number {
+    if (!this.charging) return 0;
+    const elapsed = Date.now() - this.chargeStart;
+    return Math.min(elapsed / Constants.MAX_CHARGE_MS, 1);
+  }
+
   toggleMovement(keyCode: number, directionBool: boolean): boolean {
     let hasChanged = false;
     switch (keyCode) {
-      case -1: // Custom keycode for touch
-      case 37: // Leftarrow
-      case 65: // a key
+      case -1:
+      case 37:
+      case 65:
         hasChanged = this.left !== directionBool;
         this.left = directionBool;
         break;
-      case 38: // Up arrow
-      case 87: // w key
+      case 38:
+      case 87:
         hasChanged = this.forward !== directionBool;
         this.forward = directionBool;
         break;
-      case 1: // Custom keycode for touch
-      case 39: // Right arrow
-      case 68: // d key
+      case 1:
+      case 39:
+      case 68:
         hasChanged = this.right !== directionBool;
         this.right = directionBool;
         break;
-      case 40: // Down arrow
-      case 83: // s key
+      case 40:
+      case 83:
         hasChanged = this.backward !== directionBool;
         this.backward = directionBool;
         break;
@@ -160,13 +235,19 @@ export default class CamController {
     return hasChanged;
   }
 
-  fire(): void {
+  fire(chargeTime: number): void {
     if (socket) {
       const delay = Util.getWeaponDelay(this.weapon);
       const now = new Date().getTime();
       if (now - lastShot > delay) {
         lastShot = now;
-        socket.emit('fire', camera.position, this.weapon);
+        // In 3rd person, fire from the player's actual position (firstPersonZ), not camera
+        const firePos = {
+          x: camera.position.x,
+          y: 0,
+          z: this.firstPersonZ,
+        };
+        socket.emit('fire', firePos, this.weapon, chargeTime);
       }
     }
   }
@@ -201,7 +282,7 @@ export default class CamController {
       camera.rotation.y = curRot;
       return;
     } else {
-      // only show reload-bar when playing
+      // Reload bar
       const delay = Util.getWeaponDelay(this.weapon);
       const now = new Date().getTime();
 
@@ -215,11 +296,25 @@ export default class CamController {
       }
     }
 
+    // Player lateral movement
     if (this.left) {
       curPosX -= tr * elapsed * this.direction;
     } else if (this.right) {
       curPosX += tr * elapsed * this.direction;
     }
     camera.position.x = curPosX;
+
+    // 3rd person camera positioning
+    if (this.thirdPerson) {
+      // Camera behind and above the player, looking down at the arena
+      camera.position.z = this.firstPersonZ + THIRD_PERSON_BACK * this.direction;
+      camera.position.y = THIRD_PERSON_HEIGHT;
+      if (this.direction === -1) {
+        // Rotated 180 on Y, so X tilt must be positive to look down
+        camera.rotation.set(0.35, Math.PI, 0);
+      } else {
+        camera.rotation.set(-0.35, 0, 0);
+      }
+    }
   }
 }

@@ -34,6 +34,12 @@ let shieldMeshes: Record<string, any> = {};
 let pingStart: number = 0;
 const socket = io();
 
+// New feature state
+let hazardMeshes: any[] = [];
+let powerUpMeshes: Record<string, any> = {};
+let wallMeshes: Record<string, any> = {};
+let currentReplay: any[] | null = null;
+
 function updateGameState(elapsed: number): void {
   for (const key in gameState.players) {
     gameState.players[key].update(elapsed);
@@ -53,6 +59,18 @@ function updateGameState(elapsed: number): void {
 
   if (camController != null) {
     camController.update(elapsed);
+
+    // Update charge bar and camera mode indicator
+    if (hud && !camController.isSpectatorMode()) {
+      hud.updateCharge(camController.getChargePct());
+      hud.updateCameraMode(camController.isThirdPerson());
+
+      // Show/hide own player mesh based on camera mode
+      const myPlayer = gameState.players[gameState.myId];
+      if (myPlayer) {
+        myPlayer.getMesh().visible = camController.isThirdPerson();
+      }
+    }
   }
 
   // Update shield cooldown display
@@ -65,6 +83,14 @@ function updateGameState(elapsed: number): void {
       const total = 15000;
       const remaining = cooldownEnd - now;
       hud.updateShieldCooldown(false, 1 - (remaining / total));
+    }
+  }
+
+  // Rotate power-up meshes
+  for (const puId in powerUpMeshes) {
+    if (powerUpMeshes[puId]) {
+      powerUpMeshes[puId].rotation.y += elapsed * 2;
+      powerUpMeshes[puId].position.y = 20 + Math.sin(Date.now() / 300) * 10;
     }
   }
 }
@@ -173,7 +199,6 @@ function addShieldMesh(playerId: string): void {
   const player = gameState.players[playerId];
   if (!player) return;
 
-  // Remove existing shield mesh
   removeShieldMesh(playerId);
 
   const geometry = new THREE.BoxGeometry(600, 200, 20);
@@ -195,6 +220,115 @@ function removeShieldMesh(playerId: string): void {
   }
 }
 
+// === NEW FEATURE VISUAL HELPERS ===
+
+const POWERUP_COLORS: Record<string, number> = {
+  rapid_fire: 0xff6600,
+  speed_boost: 0x00ff88,
+  heal: 0xff0066,
+  double_points: 0xffff00,
+};
+
+function addPowerUpMesh(powerUp: any): void {
+  const color = POWERUP_COLORS[powerUp.type] || 0xffffff;
+  const geometry = new THREE.BoxGeometry(40, 40, 40);
+  const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(powerUp.position.x, 20, powerUp.position.z);
+  scene.add(mesh);
+  powerUpMeshes[powerUp.id] = mesh;
+}
+
+function removePowerUpMesh(id: string): void {
+  if (powerUpMeshes[id]) {
+    scene.remove(powerUpMeshes[id]);
+    delete powerUpMeshes[id];
+  }
+}
+
+const HAZARD_COLORS: Record<string, number> = {
+  damage: 0xff0000,
+  slow: 0x0066ff,
+  wind: 0x00ff66,
+};
+
+function renderHazards(hazards: any[]): void {
+  // Clear old hazard meshes
+  for (const mesh of hazardMeshes) {
+    scene.remove(mesh);
+  }
+  hazardMeshes = [];
+
+  for (const h of hazards) {
+    const color = HAZARD_COLORS[h.type] || 0xffffff;
+    const geometry = new THREE.PlaneGeometry(h.width, h.depth);
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(h.position.x, 1, h.position.z);
+    scene.add(mesh);
+    hazardMeshes.push(mesh);
+  }
+}
+
+function addWallMesh(wall: any): void {
+  const geometry = new THREE.BoxGeometry(wall.width, 100, 20);
+  const color = wall.ownerId === 'spectator' ? 0x9933ff : 0xaa8833;
+  const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(wall.position.x, 50, wall.position.z);
+  scene.add(mesh);
+  wallMeshes[wall.id] = mesh;
+}
+
+function removeWallMesh(id: string): void {
+  if (wallMeshes[id]) {
+    scene.remove(wallMeshes[id]);
+    delete wallMeshes[id];
+  }
+}
+
+function clearArenaFeatures(): void {
+  for (const id in powerUpMeshes) removePowerUpMesh(id);
+  for (const id in wallMeshes) removeWallMesh(id);
+  for (const mesh of hazardMeshes) scene.remove(mesh);
+  hazardMeshes = [];
+}
+
+// === REPLAY SYSTEM ===
+
+function playReplay(replay: any[]): void {
+  if (!replay || replay.length === 0) return;
+  if (hud) hud.showReplayControls(replay, () => {});
+
+  let index = 0;
+  const startTime = Date.now();
+  const baseTime = replay[0].time;
+
+  const tick = () => {
+    const elapsed = Date.now() - startTime;
+    while (index < replay.length && replay[index].time - baseTime <= elapsed) {
+      const event = replay[index];
+      if (killFeed) {
+        killFeed.add(`[REPLAY] ${event.type}`, '#2196f3');
+      }
+      index++;
+    }
+    if (index < replay.length) {
+      requestAnimationFrame(tick);
+    } else {
+      if (hud) hud.hideReplayControls();
+      if (killFeed) killFeed.add('Replay complete', '#2196f3');
+    }
+  };
+  tick();
+}
+
 function setupEvents(): void {
   // Event for receiving information about zombies.
   socket.on('zombie', (zombie: any, playerId: string) => {
@@ -209,10 +343,28 @@ function setupEvents(): void {
       fox.getMesh().scale.set(s, s, s);
     }
 
+    // Scale up based on charge ratio (0 = normal, 1 = up to 2x size)
+    const chargeRatio = zombie.chargeRatio || 0;
+    if (chargeRatio > 0.1) {
+      const chargeScale = 1 + chargeRatio; // 1.0 to 2.0x
+      const mesh = fox.getMesh();
+      mesh.scale.set(
+        mesh.scale.x * chargeScale,
+        mesh.scale.y * chargeScale,
+        mesh.scale.z * chargeScale,
+      );
+    }
+
     scene.add(fox.getMesh());
     gameState.zombies[zombie.id] = fox;
 
-    if (audio) audio.play('fire');
+    if (audio) {
+      if (chargeRatio > 0.3) {
+        audio.play('charged_fire');
+      } else {
+        audio.play('fire');
+      }
+    }
   });
 
   // Event for receiving player information from the server.
@@ -224,6 +376,10 @@ function setupEvents(): void {
     setWeapon(p, Constants.FOX);
 
     gameState.players[player.id] = p;
+
+    // Add own mesh to scene but hide it (visible in 3rd person)
+    scene.add(p.getMesh());
+    p.getMesh().visible = false;
 
     camera.position.z = player.position.z;
 
@@ -259,7 +415,6 @@ function setupEvents(): void {
       scene.add(p.getMesh());
     }
 
-    // Send ready if both are in
     socket.emit('ready');
   });
 
@@ -290,6 +445,10 @@ function setupEvents(): void {
         continue;
       }
       clientZombie.setPosition(serverZombie.position);
+      // Sync speed (can change from kill buffs, hazards, sudden death)
+      if (serverZombie.speed && clientZombie.speed !== serverZombie.speed) {
+        clientZombie.setSpeed(serverZombie.speed);
+      }
     }
 
     // Remove client zombies that don't exist on server
@@ -312,6 +471,13 @@ function setupEvents(): void {
 
       if (clientPlayer.id === gameState.myId) {
         Score.update(serverPlayer.score);
+
+        // Update active power-up display
+        if (hud && serverPlayer.activePowerUps && serverPlayer.activePowerUps.length > 0) {
+          hud.showPowerUp(serverPlayer.activePowerUps[0]);
+        } else if (hud) {
+          hud.hidePowerUp();
+        }
       }
     }
 
@@ -327,6 +493,33 @@ function setupEvents(): void {
 
       if (state.round) {
         hud.updateRound(state.round, state.roundWins, gameState.myId, opponentId || undefined);
+      }
+
+      // Sudden death indicator
+      if (state.suddenDeath) {
+        hud.showSuddenDeath();
+      }
+    }
+
+    // Sync walls from state
+    if (state.walls) {
+      // Remove walls no longer in state
+      for (const wId in wallMeshes) {
+        if (!state.walls[wId]) removeWallMesh(wId);
+      }
+      // Add walls not yet rendered
+      for (const wId in state.walls) {
+        if (!wallMeshes[wId]) addWallMesh(state.walls[wId]);
+      }
+    }
+
+    // Sync power-ups from state
+    if (state.powerUps) {
+      for (const puId in powerUpMeshes) {
+        if (!state.powerUps[puId]) removePowerUpMesh(puId);
+      }
+      for (const puId in state.powerUps) {
+        if (!powerUpMeshes[puId]) addPowerUpMesh(state.powerUps[puId]);
       }
     }
   });
@@ -376,7 +569,7 @@ function setupEvents(): void {
     removeZombie(zombieId);
   });
 
-  socket.on('zombie.shielded', (zombieId: string, shieldPlayerId: string) => {
+  socket.on('zombie.shielded', (zombieId: string, _shieldPlayerId: string) => {
     const zombie = gameState.zombies[zombieId];
     if (zombie) {
       gameState.explosions.push(new Explosion(scene, zombie.getMesh().position, 0));
@@ -424,15 +617,18 @@ function setupEvents(): void {
   });
 
   socket.on('round.reset', () => {
-    // Clear all zombies from the scene for the new round
     for (const key in gameState.zombies) {
       removeZombie(key);
     }
-    // Clear shield meshes
     for (const pid in shieldMeshes) {
       removeShieldMesh(pid);
     }
+    clearArenaFeatures();
     gameState.shieldCooldownUntil = 0;
+    if (hud) {
+      hud.hideSuddenDeath();
+      hud.hidePowerUp();
+    }
   });
 
   socket.on('match.over', (data: any) => {
@@ -441,12 +637,15 @@ function setupEvents(): void {
     const opponentId = getOpponentId() || '';
 
     if (hud) {
-      hud.showMatchOver(winnerName, iWon, data.roundWins, data.stats, gameState.myId, opponentId);
+      hud.showMatchOver(winnerName, iWon, data.roundWins, data.stats, gameState.myId, opponentId, data.elo, data.leaderboard);
     }
     if (audio) audio.play('game_over');
     if (killFeed) killFeed.add(iWon ? 'VICTORY!' : 'DEFEAT', iWon ? '#4caf50' : '#f44336');
 
-    // Rematch button handler
+    // Store replay for playback
+    currentReplay = data.replay || null;
+
+    // Rematch + Replay button handlers
     setTimeout(() => {
       const rematchBtn = document.getElementById('rematch-btn');
       if (rematchBtn) {
@@ -456,16 +655,27 @@ function setupEvents(): void {
           if (status) status.textContent = 'Waiting for opponent...';
         });
       }
+
+      const replayBtn = document.getElementById('replay-btn');
+      if (replayBtn && currentReplay) {
+        replayBtn.addEventListener('click', () => {
+          if (currentReplay) playReplay(currentReplay);
+        });
+      }
     }, 100);
   });
 
   socket.on('game.rematch', () => {
     if (hud) hud.hideMatchOver();
-    // Clear all zombies from scene
     for (const key in gameState.zombies) {
       removeZombie(key);
     }
+    clearArenaFeatures();
     gameState.shieldCooldownUntil = 0;
+    if (hud) {
+      hud.hideSuddenDeath();
+      hud.hidePowerUp();
+    }
   });
 
   // Shield events
@@ -500,7 +710,7 @@ function setupEvents(): void {
   });
 
   // Damage event
-  socket.on('player.damage', (playerId: string, newHp: number) => {
+  socket.on('player.damage', (playerId: string, _newHp: number) => {
     if (playerId === gameState.myId && screenShake) {
       screenShake.trigger(8);
     }
@@ -511,16 +721,136 @@ function setupEvents(): void {
     const latency = Date.now() - pingStart;
     if (hud) hud.updatePing(latency);
   });
+
+  // === NEW FEATURE EVENTS ===
+
+  // Power-up events
+  socket.on('powerup.spawn', (powerUp: any) => {
+    addPowerUpMesh(powerUp);
+  });
+
+  socket.on('powerup.expire', (puId: string) => {
+    removePowerUpMesh(puId);
+  });
+
+  socket.on('powerup.collect', (puId: string, playerId: string, type: string) => {
+    removePowerUpMesh(puId);
+    if (audio) audio.play('powerup');
+    const name = getPlayerName(playerId);
+    const labels: Record<string, string> = {
+      rapid_fire: 'Rapid Fire',
+      speed_boost: 'Speed Boost',
+      heal: 'Heal',
+      double_points: '2X Points',
+    };
+    if (killFeed) killFeed.add(`${name} got ${labels[type] || type}!`, '#ff0');
+    if (playerId === gameState.myId && hud) {
+      hud.showPowerUp(type);
+    }
+  });
+
+  // Heal event
+  socket.on('player.heal', (playerId: string, _newHp: number) => {
+    if (killFeed) killFeed.add(`${getPlayerName(playerId)} healed!`, '#ff0066');
+  });
+
+  // Hazard events
+  socket.on('hazards', (hazards: any[]) => {
+    renderHazards(hazards);
+  });
+
+  socket.on('zombie.hazard', (zombieId: string, _hazardId: string) => {
+    const zombie = gameState.zombies[zombieId];
+    if (zombie) {
+      gameState.explosions.push(new Explosion(scene, zombie.getMesh().position, 0));
+      if (killFeed) killFeed.add(`${zombie.name} destroyed by hazard!`, '#ff4444');
+      removeZombie(zombieId);
+    }
+  });
+
+  // Wall events
+  socket.on('wall.place', (wall: any) => {
+    addWallMesh(wall);
+    if (audio) audio.play('wall');
+    if (killFeed) {
+      const owner = wall.ownerId === 'spectator' ? 'Spectator' : getPlayerName(wall.ownerId);
+      killFeed.add(`${owner} placed a wall!`, '#aa8833');
+    }
+  });
+
+  socket.on('wall.expire', (wallId: string) => {
+    removeWallMesh(wallId);
+  });
+
+  socket.on('zombie.walled', (zombieId: string, _wallId: string) => {
+    const zombie = gameState.zombies[zombieId];
+    if (zombie) {
+      gameState.explosions.push(new Explosion(scene, zombie.getMesh().position, 2));
+      if (killFeed) killFeed.add(`${zombie.name} blocked by wall!`, '#aa8833');
+      removeZombie(zombieId);
+    }
+  });
+
+  // Sudden death
+  socket.on('sudden.death', () => {
+    if (hud) hud.showSuddenDeath();
+    if (audio) audio.play('sudden_death');
+    if (killFeed) killFeed.add('SUDDEN DEATH! All creatures buffed!', '#ff0000');
+    if (screenShake) screenShake.trigger(20);
+  });
+
+  // Synergy events
+  socket.on('synergy', (playerId: string, type: string) => {
+    if (audio) audio.play('synergy');
+    const names: Record<string, string> = {
+      air_strike: 'Air Strike',
+      stampede: 'Stampede',
+      juggernaut: 'Juggernaut',
+      twin_strike: 'Twin Strike',
+    };
+    if (killFeed) killFeed.add(`${getPlayerName(playerId)} triggered ${names[type] || type}!`, '#0ff');
+    if (playerId === gameState.myId && hud) {
+      hud.showSynergy(type);
+    }
+  });
+
+  // Creature kill buff
+  socket.on('zombie.killbuff', (zombieId: string) => {
+    // Visual feedback — brief glow effect on the surviving creature
+    const zombie = gameState.zombies[zombieId];
+    if (zombie) {
+      const mesh = zombie.getMesh();
+      const originalScale = mesh.scale.x;
+      mesh.scale.set(originalScale * 1.3, originalScale * 1.3, originalScale * 1.3);
+      setTimeout(() => {
+        mesh.scale.set(originalScale, originalScale, originalScale);
+      }, 300);
+    }
+  });
+
+  // Spectator events
+  socket.on('spectator.event', (eventType: string, spectatorName: string) => {
+    const labels: Record<string, string> = {
+      speed_burst: 'triggered Speed Burst!',
+      spawn_obstacle: 'spawned an obstacle!',
+      heal_all: 'healed all players!',
+    };
+    if (killFeed) killFeed.add(`Spectator ${spectatorName} ${labels[eventType] || eventType}`, '#9933ff');
+    if (screenShake) screenShake.trigger(5);
+  });
+
+  // ELO
+  socket.on('elo', (elo: number) => {
+    if (hud) hud.updateElo(elo);
+  });
 }
 
 /**
  * Initializes the scene, renderer and game state.
  */
 function init(renderAreaId: string, isSpectator: boolean): void {
-  // load models
   models = new Models();
 
-  // Init scene and camera.
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
 
@@ -530,10 +860,8 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   hemiLight.position.set(0, 500, 0);
   scene.add(hemiLight);
 
-  // Init timetaking
   clock = new THREE.Clock(true);
 
-  // Init gamestate
   gameState = {
     myId: null,
     players: {} as Record<string, any>,
@@ -548,7 +876,6 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   const explosion = new Explosion(scene, { x: 0, y: 0, z: 0 });
   gameState.explosions.push(explosion);
 
-  // Init renderer and add its DOM element to the given render area.
   renderer = new THREE.WebGLRenderer({ alpha: true });
   const renderArea = document.getElementById(renderAreaId);
   if (renderArea) {
@@ -558,13 +885,11 @@ function init(renderAreaId: string, isSpectator: boolean): void {
     renderArea.appendChild(renderer.domElement);
   }
 
-  // Init new systems
   audio = new Audio();
   screenShake = new ScreenShake(camera);
   killFeed = new KillFeed();
   hud = new HUD(isSpectator);
 
-  // Trigger a resize and set up a window event for resizing.
   handleResize();
   window.addEventListener('resize', handleResize);
 }
@@ -601,6 +926,17 @@ function joinPlayer(gameId: number): void {
 function joinSpectator(gameId: number): void {
   socket.emit('join.spectator', { gameId: gameId });
   camController = new CamController(camera, null, 0);
+
+  // Set up spectator vote buttons
+  if (hud) {
+    const panel = hud.getSpectatorPanel();
+    panel.addEventListener('click', (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target.dataset.voteType) {
+        socket.emit('spectator.vote', target.dataset.voteType);
+      }
+    });
+  }
 }
 
 function exitGame(gameId: number): void {

@@ -1,53 +1,360 @@
-<div class="container">
-<div class="jumbotron">
-	<h1>Zombie hugs (what the fox!)</h1>
-	<p>Zombie Hugs (also known as What the Fox!) is a 2015 science fiction zombie/fox-themed first-person shooter (FPS) video game by DAMN Software. It is considered one of the most significant and influential titles in the video game industry, for having ushered in the popularity of the first-person shooter genre.</p>
+{{#section "head"}}
+<style>
+  .hero {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    padding: 40px 20px;
+    text-align: center;
+    border-radius: 0;
+    margin-bottom: 30px;
+  }
+  .hero h1 {
+    font-size: 2.8em;
+    font-weight: 700;
+    margin-bottom: 10px;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
+  .hero .tagline {
+    font-size: 1.2em;
+    color: #adb5bd;
+    margin-bottom: 20px;
+  }
+  .hero .btn-play {
+    font-size: 1.3em;
+    padding: 12px 40px;
+    background: #4caf50;
+    border: none;
+    color: #fff;
+    border-radius: 5px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    margin: 5px;
+  }
+  .hero .btn-play:hover { background: #43a047; color: #fff; text-decoration: none; }
+
+  .section-title {
+    font-size: 1.6em;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 3px solid #4caf50;
+    display: inline-block;
+  }
+
+  /* How to Play */
+  .guide-section { margin-bottom: 40px; }
+  .controls-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .control-card {
+    flex: 1 1 180px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+  .control-card .key {
+    display: inline-block;
+    background: #333;
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 1.1em;
+    font-weight: bold;
+    margin-bottom: 8px;
+    min-width: 40px;
+  }
+  .control-card .desc {
+    font-size: 0.9em;
+    color: #555;
+  }
+
+  /* Creatures */
+  .creature-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .creature-card {
+    flex: 1 1 140px;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    color: #fff;
+    min-width: 120px;
+  }
+  .creature-card h4 { margin: 0 0 6px 0; font-size: 1.1em; }
+  .creature-card .stats { font-size: 0.85em; opacity: 0.9; }
+
+  /* Features */
+  .feature-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .feature-card {
+    flex: 1 1 220px;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    border-left: 4px solid #2196f3;
+  }
+  .feature-card h4 {
+    margin: 0 0 6px 0;
+    font-size: 1em;
+    font-weight: 700;
+    color: #333;
+  }
+  .feature-card p { margin: 0; font-size: 0.85em; color: #666; }
+
+  /* Game list */
+  .game-item {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .game-item .game-info { flex: 1; min-width: 150px; }
+  .game-item .game-name { font-weight: 700; color: #333; }
+  .game-item .game-time { font-size: 0.85em; color: #888; }
+  .game-item .game-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .game-item .btn-join {
+    padding: 8px 18px; border-radius: 4px; border: none;
+    font-size: 0.9em; cursor: pointer; text-decoration: none; display: inline-block;
+  }
+  .btn-join-play { background: #4caf50; color: #fff; }
+  .btn-join-play:hover { background: #43a047; color: #fff; text-decoration: none; }
+  .btn-join-watch { background: #2196f3; color: #fff; }
+  .btn-join-watch:hover { background: #1976d2; color: #fff; text-decoration: none; }
+
+  /* New game form */
+  .new-game-box {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .new-game-box .form-control {
+    margin-bottom: 10px;
+  }
+  .new-game-box .btn-start {
+    background: #4caf50; color: #fff; border: none;
+    padding: 10px 24px; border-radius: 4px; font-size: 1em; cursor: pointer;
+    width: 100%;
+  }
+  .new-game-box .btn-start:hover { background: #43a047; }
+
+  /* Mobile tip */
+  .mobile-tip {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 0.9em;
+    color: #664d03;
+    margin-bottom: 20px;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .hero h1 { font-size: 1.8em; }
+    .hero .tagline { font-size: 1em; }
+    .control-card { flex: 1 1 120px; padding: 10px; }
+    .creature-card { flex: 1 1 100px; padding: 10px; }
+    .feature-card { flex: 1 1 100%; }
+    .two-col { flex-direction: column; }
+  }
+
+  .two-col {
+    display: flex;
+    gap: 30px;
+  }
+  .col-main { flex: 2; min-width: 0; }
+  .col-side { flex: 1; min-width: 260px; }
+</style>
+{{/section}}
+
+<div class="hero">
+  <h1>Zombie Hugs</h1>
+  <div class="tagline">aka "What the Fox!" &mdash; A 2-player competitive arena game</div>
+  <p style="color:#ccc; max-width:600px; margin: 0 auto 20px;">
+    Fire creatures across the arena to score points and deal damage.
+    Shield, combo, charge your shots, and use power-ups to dominate.
+  </p>
+  <form method="POST" action="/game" style="display:inline">
+    <button type="submit" class="btn-play">Play Now</button>
+  </form>
+  <a href="#how-to-play" class="btn-play" style="background:#2196f3;">How to Play</a>
 </div>
 
-<div class="row">
-	<div class="col-sm-4">
-		<div class="bs-component text-center">
-        <form method="POST" action="/game">
-            <div class="form-group">
-                <label for="">Game name (optional)</label>
-                <input type="text" name="gameName" class="form-control">
-            </div>
-		    <button type="submit" class="btn btn-primary btn-raised">
-		      Start new game!
-		    </button>
-        </form>
+<div class="container">
+  <div class="two-col">
+    <div class="col-main">
+
+      <!-- HOW TO PLAY -->
+      <div class="guide-section" id="how-to-play">
+        <div class="section-title">How to Play</div>
+        <p>Two players stand on opposite sides of an arena. Fire creatures toward your opponent's side to score points and deal damage. First to <strong>10 points</strong> or to deplete the opponent's <strong>10 HP</strong> wins the round. Win <strong>2 rounds</strong> to win the match.</p>
+
+        <h3 style="margin-top:20px;">Controls</h3>
+
+        <div class="controls-grid">
+          <div class="control-card">
+            <div class="key">A / D</div>
+            <div class="desc">Move left / right</div>
+          </div>
+          <div class="control-card">
+            <div class="key">Click</div>
+            <div class="desc">Fire creature</div>
+          </div>
+          <div class="control-card">
+            <div class="key">Hold Click</div>
+            <div class="desc">Charged shot (stronger)</div>
+          </div>
+          <div class="control-card">
+            <div class="key">1-5</div>
+            <div class="desc">Select creature</div>
+          </div>
+          <div class="control-card">
+            <div class="key">Q</div>
+            <div class="desc">Activate shield</div>
+          </div>
+          <div class="control-card">
+            <div class="key">E</div>
+            <div class="desc">Place wall (3 pts)</div>
+          </div>
+          <div class="control-card">
+            <div class="key">V</div>
+            <div class="desc">Toggle 1st / 3rd person</div>
+          </div>
         </div>
 
-		<div class="bs-component">
-			<blockquote>
-				<p><i>This game has changed my life!</i></p>
-				<small>John Carmack in <cite title="Time Magazine">TIME</cite></small>
-			</blockquote>
-		</div>
-	</div>
-	<div class="col-sm-8">
-		<div class="bs-component">
-			<div class="list-group">
-				{{#each games}}
-				<div class="list-group-item">
-					<div class="row-action-primary">
-						<a class="btn btn-success btn-fab btn-raised" href="/game/{{id}}">
-						{{id}}
-						</a>						
-					</div>
-					<div class="row-content">
-                        <div class="least-content">{{ startTime }}</div>
-                        <div class="list-group-item-heading">{{ gameName }}</div>
-						<p class="list-group-item-text">
-							<a href="/game/{{id}}" class="btn btn-success btn-raised"><span class="glyphicon glyphicon-screenshot" aria-hidden="true"></span>&nbsp;&nbsp;Join</a>
-							<a href="/game/{{id}}?spectate=1" class="btn btn-info btn-raised"><span class="glyphicon glyphicon-eye-open" aria-hidden="true"></span>&nbsp;&nbsp;Spectate</a>
-						</p>
-					</div>
-				</div>
-				<div class="list-group-separator"></div>
-				{{/each}}
-			</div>
-		</div>
-	</div>
-</div>
+        <div class="mobile-tip">
+          <strong>Mobile:</strong> Tap left/right thirds of screen to move. Tap center to fire (hold for charged shot). Use weapon buttons at the bottom to switch creatures.
+        </div>
+
+        <h3>Creatures</h3>
+        <div class="creature-grid">
+          <div class="creature-card" style="background:#cc5500;">
+            <h4>1: Fox</h4>
+            <div class="stats">1 HP &middot; Fast<br>Zigzag movement</div>
+          </div>
+          <div class="creature-card" style="background:#8a6e2f;">
+            <h4>2: Horse</h4>
+            <div class="stats">2 HP &middot; Steady<br>Pushes through</div>
+          </div>
+          <div class="creature-card" style="background:#d4578a;">
+            <h4>3: Flamingo</h4>
+            <div class="stats">1 HP &middot; Rapid fire<br>Flies high (air only)</div>
+          </div>
+          <div class="creature-card" style="background:#2d8a2d;">
+            <h4>4: Zombie</h4>
+            <div class="stats">3 HP &middot; Slow fire<br>Tanky bruiser</div>
+          </div>
+          <div class="creature-card" style="background:#6633cc;">
+            <h4>5: Horde</h4>
+            <div class="stats">1 HP &middot; Slow fire<br>Fires 5 at once</div>
+          </div>
+        </div>
+
+        <h3>Features</h3>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4>Power-Up Pickups</h4>
+            <p>Rapid Fire, Speed Boost, Heal, and Double Points spawn on the arena. Move to collect them.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Charged Shots</h4>
+            <p>Hold your fire button to charge. Longer charge = faster creature with more HP.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Creature Synergies</h4>
+            <p>Fire specific combos in quick succession for bonus effects: Air Strike, Stampede, Juggernaut, Twin Strike.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Arena Hazards</h4>
+            <p>Each round has random hazard zones: damage, slow, or wind. Creatures passing through are affected.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Shield &amp; Walls</h4>
+            <p>Press Q for a 3-second shield. Press E to place a wall that blocks enemy creatures (costs 3 points).</p>
+          </div>
+          <div class="feature-card">
+            <h4>Creature Kill Buffs</h4>
+            <p>When your creature destroys an enemy, it gets a speed boost and keeps going.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Sudden Death</h4>
+            <p>If a round lasts 90 seconds, all creatures get double speed and extra HP.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Combo System</h4>
+            <p>Score multiple times within 2 seconds for escalating combo bonus points.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Spectator Interference</h4>
+            <p>Spectators can trigger events: Speed Burst, Spawn Wall, or Heal All players.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Ranked ELO &amp; Replays</h4>
+            <p>Every match updates your ELO rating. Watch replays of your matches after they end.</p>
+          </div>
+        </div>
+
+        <h3>Upgrades</h3>
+        <p>Earn upgrades as you score:</p>
+        <ul>
+          <li><strong>5 points:</strong> All your creatures get +50 speed</li>
+          <li><strong>8 points:</strong> All your creatures get +1 HP</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="col-side">
+      <!-- NEW GAME -->
+      <div class="new-game-box">
+        <h3 style="margin-top:0;">Start a Game</h3>
+        <form method="POST" action="/game">
+          <input type="text" name="gameName" class="form-control" placeholder="Game name (optional)">
+          <button type="submit" class="btn-start">Create Game</button>
+        </form>
+      </div>
+
+      <!-- ACTIVE GAMES -->
+      {{#if games}}
+      <div class="section-title" style="font-size:1.2em;">Active Games</div>
+      {{#each games}}
+      <div class="game-item">
+        <div class="game-info">
+          <div class="game-name">{{#if gameName}}{{ gameName }}{{else}}Game #{{ id }}{{/if}}</div>
+          <div class="game-time">{{ startTime }}</div>
+        </div>
+        <div class="game-actions">
+          <a href="/game/{{id}}" class="btn-join btn-join-play">Join</a>
+          <a href="/game/{{id}}?spectate=1" class="btn-join btn-join-watch">Watch</a>
+        </div>
+      </div>
+      {{/each}}
+      {{else}}
+      <p style="color:#888; text-align:center;">No active games. Start one!</p>
+      {{/if}}
+    </div>
+  </div>
 </div>

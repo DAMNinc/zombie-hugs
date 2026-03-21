@@ -13,34 +13,47 @@
     <link href="/css/roboto.min.css" rel="stylesheet">
     <link href="/css/material-fullpalette.min.css" rel="stylesheet">
     <link href="/css/ripples.min.css" rel="stylesheet">
+    <style>
+      body { background: #fafafa; }
+      .navbar { margin-bottom: 0; }
+      .navbar-brand { font-weight: 700; }
+      footer { padding: 20px 0; color: #aaa; font-size: 0.85em; }
+      @media (max-width: 768px) {
+        .container { padding-left: 12px; padding-right: 12px; }
+      }
+    </style>
     {{{ _sections.head }}}
 </head>
 <body>
 <div class="bs-component">
     <div class="navbar navbar-default">
-        <div class="navbar-header">
-            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-responsive-collapse">
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-            </button>
-            <a class="navbar-brand" href="javascript:void(0)">Zombie Hugs (What the Fox!)</a>
-        </div>
-        <div class="navbar-collapse collapse navbar-responsive-collapse">
-            <ul class="nav navbar-nav">
-                <li><a href="/">Home</a></li>
-                <li><a href="/zombies">Zombies</a></li>
-            </ul>
+        <div class="container">
+            <div class="navbar-header">
+                <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-responsive-collapse">
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                </button>
+                <a class="navbar-brand" href="/">Zombie Hugs</a>
+            </div>
+            <div class="navbar-collapse collapse navbar-responsive-collapse">
+                <ul class="nav navbar-nav">
+                    <li><a href="/">Home</a></li>
+                    <li><a href="/zombies">Gallery</a></li>
+                </ul>
+            </div>
         </div>
     </div>
 </div>
-	{{{ body }}}
+  {{{ body }}}
 <footer>
     <div class="container">
-        <p class="text-right">
-            Version: {{ version }}
+        <p class="text-center">
+            Zombie Hugs v{{ version }}
         </p>
     </div>
 </footer>
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.2/js/bootstrap.min.js"></script>
 </body>
 </html>
