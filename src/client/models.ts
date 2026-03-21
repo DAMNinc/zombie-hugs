@@ -6,6 +6,7 @@ export default class Models {
   fox: any;
   flamingo: any;
   horse: any;
+  zombie: any;
   player: any;
 
   constructor() {
@@ -13,6 +14,7 @@ export default class Models {
     this.fox = null;
     this.flamingo = null;
     this.horse = null;
+    this.zombie = null;
     this.player = null;
 
     const jsonloader = new THREE.JSONLoader(true);
@@ -25,6 +27,9 @@ export default class Models {
     });
     this.load(jsonloader, '/content/horse.json', (geo: any) => {
       this.horse = geo;
+    });
+    this.load(jsonloader, '/content/zombie.json', (geo: any) => {
+      this.zombie = geo;
     });
     this.load(jsonloader, '/content/monster.json', (geo: any) => {
       this.player = geo;
@@ -59,6 +64,10 @@ export default class Models {
 
   getHorse(): any {
     return { model: this.horse, offset: { x: 0, y: -10, z: 0 }, health: healthFromCode(Constants.HORSE) };
+  }
+
+  getZombieModel(): any {
+    return { model: this.zombie, offset: { x: 0, y: -10, z: 0 }, health: healthFromCode(Constants.ZOMBIE), scale: 15 };
   }
 
   getPlayer(direction: number): any {

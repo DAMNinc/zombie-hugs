@@ -26,6 +26,8 @@ function healthFromCode(code: number): number {
       return 2;
     case 3: // Flamingo
       return 1;
+    case 4: // Zombie
+      return 3;
     default:
       return 1;
   }

@@ -40,8 +40,23 @@
             "modelPath": "/content/horse.json",
             "previewScale": 0.4,
             "previewOffset": {
-                "x": 0, 
-                "y": -50, 
+                "x": 0,
+                "y": -50,
+                "z": -150
+            }
+        },
+        {
+            "name": "Zombie",
+            "shortDescription": "Undead and unstoppable",
+            "features": [
+                "Reload time: 2 seconds",
+                "Health: 3"
+            ],
+            "modelPath": "/content/zombie.json",
+            "previewScale": 15,
+            "previewOffset": {
+                "x": 0,
+                "y": -80,
                 "z": -150
             }
         }

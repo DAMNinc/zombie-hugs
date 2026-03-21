@@ -16,6 +16,10 @@ export default class Util {
       case 99: // numeric keypad 3
         code = Constants.FLAMINGO;
         break;
+      case 52:
+      case 100: // numeric keypad 4
+        code = Constants.ZOMBIE;
+        break;
     }
     return code;
   }
@@ -31,6 +35,9 @@ export default class Util {
         break;
       case Constants.FLAMINGO:
         delay = 500;
+        break;
+      case Constants.ZOMBIE:
+        delay = 2000;
         break;
     }
     return delay;

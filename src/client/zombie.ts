@@ -69,6 +69,9 @@ function getZombieModelFromCode(code: number): any {
     case Constants.FLAMINGO:
       zombieModel = models!.getFlamingo();
       break;
+    case Constants.ZOMBIE:
+      zombieModel = models!.getZombieModel();
+      break;
   }
   return zombieModel;
 }
@@ -111,7 +114,8 @@ function setWeapon(player: Player, code: number): void {
 
   const fox = createFoxFromModel(player.getDirection() * -1, startPosition, zombieModel);
   fox.setSpeed(0);
-  fox.getMesh().scale.set(0.25, 0.25, 0.25);
+  const s = 0.25 * (zombieModel.scale || 1);
+  fox.getMesh().scale.set(s, s, s);
   scene.add(fox.getMesh());
 
   player.setWeapon(code, fox);
@@ -125,6 +129,10 @@ function setupEvents(): void {
     const zombieModel = getZombieModelFromCode(gameState.players[playerId].getWeaponCode());
 
     const fox = createFoxFromModel(zombie.direction, zombie.position, zombieModel, zombie.name);
+    if (zombieModel.scale) {
+      const s = zombieModel.scale;
+      fox.getMesh().scale.set(s, s, s);
+    }
 
     // Add the mesh of the zombie to the scene.
     scene.add(fox.getMesh());

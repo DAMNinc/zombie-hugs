@@ -65,9 +65,11 @@ export default class CamController {
         case 49:
         case 50:
         case 51:
+        case 52:
         case 97: // numeric keypad 1
         case 98: // numeric keypad 2
         case 99: // numeric keypad 3
+        case 100: // numeric keypad 4
           selectWeapon(keyCode);
           break;
         default:

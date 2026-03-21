@@ -25,16 +25,15 @@
             if (zombie) {
                 scene.remove(zombie.mesh);
             }
-            zombie = new ROME.Animal(newZombie.model.geometry, true);
-            zombie.mesh.scale.set(newZombie.previewScale, newZombie.previewScale, newZombie.previewScale);
 
-            
+            zombie = new ROME.Animal(newZombie.model.geometry, true);
+            zombie.play(zombie.availableAnimals[0], zombie.availableAnimals[0]);
+            zombie.animalA.timeScale = zombie.animalB.timeScale = 0.9;
+
+            zombie.mesh.scale.set(newZombie.previewScale, newZombie.previewScale, newZombie.previewScale);
             zombie.mesh.position.x = newZombie.previewOffset.x;
             zombie.mesh.position.y = newZombie.previewOffset.y;
             zombie.mesh.position.z = newZombie.previewOffset.z;
-
-            zombie.play(zombie.availableAnimals[0], zombie.availableAnimals[0]);
-            zombie.animalA.timeScale = zombie.animalB.timeScale = 0.9;
 
             // Add the mesh of the zombie to the scene.
             scene.add(zombie.mesh);
@@ -64,6 +63,10 @@
 
         function initPreview() {
             scene = new THREE.Scene();
+            scene.add(new THREE.AmbientLight(0x666666));
+            var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(0, 1, 1);
+            scene.add(dirLight);
             const camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
 
             const clock = new THREE.Clock(true);
