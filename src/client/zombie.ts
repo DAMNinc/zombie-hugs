@@ -852,8 +852,30 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   models = new Models();
 
   scene = new THREE.Scene();
+
+  // Sky gradient background
+  const skyCanvas = document.createElement('canvas');
+  skyCanvas.width = 1;
+  skyCanvas.height = 256;
+  const skyCtx = skyCanvas.getContext('2d')!;
+  const skyGrad = skyCtx.createLinearGradient(0, 0, 0, 256);
+  skyGrad.addColorStop(0, '#1a3a5c');    // deep blue top
+  skyGrad.addColorStop(0.3, '#4a90d9');  // mid blue
+  skyGrad.addColorStop(0.6, '#87CEEB');  // light blue
+  skyGrad.addColorStop(0.85, '#b8dced'); // pale horizon
+  skyGrad.addColorStop(1, '#d4e8d0');    // greenish haze at bottom
+  skyCtx.fillStyle = skyGrad;
+  skyCtx.fillRect(0, 0, 1, 256);
+  const skyTexture = new THREE.Texture(skyCanvas);
+  skyTexture.needsUpdate = true;
+  const skyGeo = new THREE.SphereGeometry(4500, 32, 15);
+  const skyMat = new THREE.MeshBasicMaterial({ map: skyTexture, side: THREE.BackSide, fog: false });
+  const skyDome = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(skyDome);
+
   camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
 
+  // Lighting: warm sun + cool fill
   const hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 10);
   hemiLight.color.setHSL(0.6, 1, 0.6);
   hemiLight.groundColor.setHSL(0.095, 1, 0.75);
@@ -873,10 +895,52 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   const terrain = new Terrain(128, 128, camera.position.y);
   scene.add(terrain.getMesh());
 
+  // Arena boundary markers — corner posts
+  const postGeo = new THREE.CylinderGeometry(5, 5, 80, 8);
+  const postMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const arenaHalfX = 500;
+  const arenaHalfZ = 1500;
+  const postY = -10;
+  const corners = [
+    [-arenaHalfX, postY, -arenaHalfZ],
+    [arenaHalfX, postY, -arenaHalfZ],
+    [-arenaHalfX, postY, arenaHalfZ],
+    [arenaHalfX, postY, arenaHalfZ],
+  ];
+  for (const [px, py, pz] of corners) {
+    const post = new THREE.Mesh(postGeo, postMat);
+    post.position.set(px, py, pz);
+    scene.add(post);
+  }
+
+  // Arena side lines (thin white boxes along the edges)
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+  // Side lines (X edges)
+  for (const xSide of [-arenaHalfX, arenaHalfX]) {
+    const lineGeo = new THREE.BoxGeometry(4, 2, arenaHalfZ * 2);
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    line.position.set(xSide, -48, 0);
+    scene.add(line);
+  }
+  // End lines (Z edges)
+  for (const zSide of [-arenaHalfZ, arenaHalfZ]) {
+    const lineGeo = new THREE.BoxGeometry(arenaHalfX * 2, 2, 4);
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    line.position.set(0, -48, zSide);
+    scene.add(line);
+  }
+  // Center line
+  const centerLineGeo = new THREE.BoxGeometry(arenaHalfX * 2, 2, 3);
+  const centerLineMat = new THREE.MeshBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.4 });
+  const centerLine = new THREE.Mesh(centerLineGeo, centerLineMat);
+  centerLine.position.set(0, -48, 0);
+  scene.add(centerLine);
+
   const explosion = new Explosion(scene, { x: 0, y: 0, z: 0 });
   gameState.explosions.push(explosion);
 
-  renderer = new THREE.WebGLRenderer({ alpha: true });
+  renderer = new THREE.WebGLRenderer({ alpha: false });
+  renderer.setClearColor(0x87CEEB);
   const renderArea = document.getElementById(renderAreaId);
   if (renderArea) {
     if (renderArea.hasChildNodes()) {
