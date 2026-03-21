@@ -63,11 +63,13 @@ export default class CamController {
         case 49:
         case 50:
         case 51:
-        case 52: // 4 key - Horde
+        case 52: // 4 key - Zombie
+        case 53: // 5 key - Horde
         case 97: // numeric keypad 1
         case 98: // numeric keypad 2
         case 99: // numeric keypad 3
         case 100: // numeric keypad 4
+        case 101: // numeric keypad 5
           selectWeapon(keyCode);
           break;
         case 81: // Q key - Shield

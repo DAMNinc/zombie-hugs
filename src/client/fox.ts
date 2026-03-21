@@ -272,14 +272,15 @@ ROME.AnimalShader = {
 // animation data
 
 ROME.AnimalAnimationData = {
-  animalNames: ['fox'],
+  animalNames: ['fox', 'zombie'],
 
   colorVariations: {
     fox: { hRange: 0.03, sRange: 0.15, vRange: 0.25, hOffset: -0.012, sOffset: 0.05, vOffset: 0.0 },
+    zombie: { hRange: 0.0, sRange: 0.0, vRange: 0.0, hOffset: 0.0, sOffset: 0.0, vOffset: 0.0 },
     zero: { hRange: 0.0, sRange: 0.0, vRange: 0.0, hOffset: 0.0, sOffset: 0.0, vOffset: 0.0 },
   } as Record<string, any>,
 
-  animalVariationMap: { fox: 'fox' } as Record<string, string>,
+  animalVariationMap: { fox: 'fox', zombie: 'zombie' } as Record<string, string>,
 
   // init frame times and indices
 
@@ -520,7 +521,7 @@ function randomizeColors(colors: any[], variations: any): void {
 }
 
 /**
- * Represents a fox.
+ * Represents a fox (or any weapon model).
  */
 export default class Fox {
   offset: any;

@@ -38,7 +38,9 @@ function healthFromCode(code: number): number {
       return 2;
     case 3: // Flamingo
       return 1;
-    case 4: // Horde
+    case 4: // Zombie
+      return 3;
+    case 5: // Horde
       return 1;
     default:
       return 1;
@@ -47,7 +49,7 @@ function healthFromCode(code: number): number {
 
 function speedFromCode(code: number): number {
   switch (code) {
-    case 4: // Horde - slower
+    case 5: // Horde - slower
       return 200;
     default:
       return 300;
@@ -130,7 +132,7 @@ class Game {
       const baseSpeed = speedFromCode(weaponCode);
       const speed = upgradeLevel >= 1 ? baseSpeed + 50 : baseSpeed;
 
-      if (weaponCode === 4) {
+      if (weaponCode === 5) {
         // Horde: fire 5 small zombies in a spread
         for (let i = 0; i < 5; i++) {
           const spreadX = (i - 2) * 60;
@@ -147,7 +149,7 @@ class Game {
         this.emitAll('zombie', zombie.toJSON(), player.id);
       }
 
-      this.stats[player.id].zombiesFired += (weaponCode === 4 ? 5 : 1);
+      this.stats[player.id].zombiesFired += (weaponCode === 5 ? 5 : 1);
     });
 
     player.socket.on('move.start', (keyCode: number) => {

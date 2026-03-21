@@ -18,6 +18,10 @@ export default class Util {
         break;
       case 52:
       case 100: // numeric keypad 4
+        code = Constants.ZOMBIE;
+        break;
+      case 53:
+      case 101: // numeric keypad 5
         code = Constants.HORDE;
         break;
     }
@@ -35,6 +39,9 @@ export default class Util {
         break;
       case Constants.FLAMINGO:
         delay = 500;
+        break;
+      case Constants.ZOMBIE:
+        delay = 2000;
         break;
       case Constants.HORDE:
         delay = 3000;

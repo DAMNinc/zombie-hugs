@@ -30,3 +30,5 @@ license.
 *Roboto Font* by Christian Robertson, [Apache License, version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)
 
 *Bootstrap Material Design theme* by Federico Zivolo, custom free license
+
+*[Animated Zombie](https://quaternius.com/packs/animatedzombie.html)* by Quaternius, CC0 1.0 Universal
