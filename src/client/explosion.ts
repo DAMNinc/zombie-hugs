@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 
+const EXPLOSION_COLORS: Record<number, string> = {
+  1: '#ff6600', // Fox - orange
+  2: '#aa8833', // Horse - brown/gold
+  3: '#ff69b4', // Flamingo - pink
+  4: '#33ff33', // Horde - green
+};
+
 export default class Explosion {
   position: any;
   particleCount: number;
@@ -9,15 +16,15 @@ export default class Explosion {
   material: any;
   particle: any;
 
-  constructor(scene: any, position: any) {
+  constructor(scene: any, position: any, weaponCode?: number) {
     this.position = position;
-    this.particleCount = 5000;
+    this.particleCount = weaponCode === 2 ? 8000 : weaponCode === 4 ? 2000 : 5000;
     this.scene = scene;
     this.elapsed = 0;
-    this.init();
+    this.init(weaponCode);
   }
 
-  init(): void {
+  init(weaponCode?: number): void {
     this.geometry = new THREE.Geometry();
 
     for (let i = 0; i < this.particleCount; i++) {
@@ -29,10 +36,11 @@ export default class Explosion {
     }
 
     const size = 5;
+    const color = EXPLOSION_COLORS[weaponCode || 0] || '#ff0';
 
     this.material = new THREE.PointCloudMaterial({
       size: size,
-      color: '#ff0',
+      color: color,
     });
     this.particle = new THREE.PointCloud(this.geometry, this.material);
     this.particle.position.set(this.position.x, this.position.y, this.position.z);

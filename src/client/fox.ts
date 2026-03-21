@@ -529,14 +529,20 @@ export default class Fox {
   name: string;
   speed: number;
   foxObj: any;
+  weaponCode: number;
+  spawnTime: number;
+  baseX: number;
 
-  constructor(direction: number, zombieModel: any, name?: string) {
+  constructor(direction: number, zombieModel: any, name?: string, weaponCode?: number) {
     this.offset = zombieModel.offset;
     this.health = zombieModel.health;
     this.direction = direction || -1;
     this.name = name || '';
+    this.weaponCode = weaponCode || 1;
+    this.spawnTime = Date.now();
+    this.baseX = 0;
 
-    this.speed = 300;
+    this.speed = (weaponCode === 4) ? 200 : 300;
     this.foxObj = new ROME.Animal(zombieModel.model.geometry, true);
     this.foxObj.play(this.foxObj.availableAnimals[0], this.foxObj.availableAnimals[0]);
     this.foxObj.animalA.timeScale = this.foxObj.animalB.timeScale = 0.9;
@@ -548,6 +554,13 @@ export default class Fox {
 
   update(elapsed: number): void {
     this.foxObj.mesh.position.z += elapsed * this.speed * this.direction;
+
+    // Fox zigzag
+    if (this.weaponCode === 1 && this.speed > 0) {
+      const timeSinceSpawn = (Date.now() - this.spawnTime) / 1000;
+      this.foxObj.mesh.position.x = this.baseX + this.offset.x + Math.sin(timeSinceSpawn * 4) * 50;
+    }
+
     this.foxObj.update(elapsed * 1000);
   }
 

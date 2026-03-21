@@ -3,7 +3,7 @@ import Util from './util';
 
 let camera: any = null;
 let socket: any = null;
-let isSpectator = false;
+let spectatorMode = false;
 let lastShot = 0;
 
 export default class CamController {
@@ -18,9 +18,7 @@ export default class CamController {
     camera = cam;
     socket = sock;
 
-    // Currently, the absence of a socket object determines whether or not the
-    // cam controller is a spectator.
-    isSpectator = !sock;
+    spectatorMode = !sock;
 
     this.direction = direction;
     this.weapon = Constants.FOX;
@@ -65,10 +63,17 @@ export default class CamController {
         case 49:
         case 50:
         case 51:
+        case 52: // 4 key - Horde
         case 97: // numeric keypad 1
         case 98: // numeric keypad 2
         case 99: // numeric keypad 3
+        case 100: // numeric keypad 4
           selectWeapon(keyCode);
+          break;
+        case 81: // Q key - Shield
+          if (socket) {
+            socket.emit('shield');
+          }
           break;
         default:
           endMovement(keyCode);
@@ -83,15 +88,12 @@ export default class CamController {
     };
 
     const touchStart = (e: TouchEvent) => {
-      // Prevent mouse clicks...
       e.preventDefault();
 
       if (e.touches.length > 0) {
         if (e.touches[0].clientX < window.innerWidth / 3) {
-          // Simulate left arrow
           startMovement(-1);
         } else if (e.touches[0].clientX > window.innerWidth - window.innerWidth / 3) {
-          // Simulate right arrow
           startMovement(1);
         } else {
           console.log('Touch "click"');
@@ -102,7 +104,6 @@ export default class CamController {
 
     const touchEnd = (e: TouchEvent) => {
       if (e.touches.length === 0) {
-        // Just stop movement in both directions :-)
         endMovement(-1);
         endMovement(1);
       }
@@ -113,6 +114,18 @@ export default class CamController {
     window.addEventListener('click', mouseClickEvent);
     window.addEventListener('touchstart', touchStart);
     window.addEventListener('touchend', touchEnd);
+  }
+
+  isSpectatorMode(): boolean {
+    return spectatorMode;
+  }
+
+  selectWeaponByCode(code: number): void {
+    if (socket && this.weapon !== code) {
+      console.log('Changed weapon from ' + this.weapon + ' to ' + code);
+      socket.emit('weapon.set', code);
+      this.weapon = code;
+    }
   }
 
   toggleMovement(keyCode: number, directionBool: boolean): boolean {
@@ -161,9 +174,7 @@ export default class CamController {
     let curPosX = camera.position.x;
 
     // Spectators have full movement
-    if (isSpectator) {
-      // Because free movement is calculated differently, the position modifier
-      // has to be much lower.
+    if (spectatorMode) {
       const ftr = 5.0;
       const rot = 0.025;
       let curPosZ = camera.position.z;
@@ -197,14 +208,11 @@ export default class CamController {
         if (now - lastShot <= delay) {
           reloader.style.width = ((now - lastShot) / delay) * 100 + '%';
         } else {
-          // set to 100% when ready to shoot
           reloader.style.width = '100%';
         }
       }
     }
 
-    // If the cam controller is a player, the player direction matters and we can
-    // only move along the x-axis (at the edge of the battlefield).
     if (this.left) {
       curPosX -= tr * elapsed * this.direction;
     } else if (this.right) {
