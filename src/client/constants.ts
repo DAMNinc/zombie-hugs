@@ -5,6 +5,8 @@ export default class Constants {
   static get ZOMBIE(): number { return 4; }
   static get HORDE(): number { return 5; }
   static get MAX_HP(): number { return 10; }
+  static get MAX_CHARGE_MS(): number { return 3000; }
+  static get WALL_COST(): number { return 3; }
 }
 
 export function healthFromCode(code: number): number {

@@ -1,4 +1,4 @@
-type SoundName = 'fire' | 'collision' | 'score' | 'damage' | 'weapon_switch' | 'countdown' | 'game_start' | 'game_over' | 'shield' | 'combo';
+type SoundName = 'fire' | 'collision' | 'score' | 'damage' | 'weapon_switch' | 'countdown' | 'game_start' | 'game_over' | 'shield' | 'combo' | 'powerup' | 'sudden_death' | 'synergy' | 'wall' | 'charged_fire';
 
 // Procedurally generated sound effects using Web Audio API
 export default class Audio {
@@ -12,7 +12,6 @@ export default class Audio {
       this.enabled = false;
     }
 
-    // Resume on first interaction
     const resume = () => {
       if (this.ctx?.state === 'suspended') {
         this.ctx.resume();
@@ -63,6 +62,32 @@ export default class Audio {
         this.playTone(700, 0.08, 'sine', 0.3);
         setTimeout(() => this.playTone(900, 0.08, 'sine', 0.3), 80);
         setTimeout(() => this.playTone(1100, 0.12, 'sine', 0.3), 160);
+        break;
+      case 'powerup':
+        this.playTone(500, 0.08, 'sine', 0.3);
+        setTimeout(() => this.playTone(700, 0.08, 'sine', 0.3), 60);
+        setTimeout(() => this.playTone(900, 0.08, 'sine', 0.3), 120);
+        setTimeout(() => this.playTone(1200, 0.12, 'sine', 0.3), 180);
+        break;
+      case 'sudden_death':
+        this.playTone(200, 0.3, 'sawtooth', 0.5);
+        setTimeout(() => this.playTone(150, 0.3, 'sawtooth', 0.5), 300);
+        setTimeout(() => this.playTone(100, 0.5, 'sawtooth', 0.6), 600);
+        break;
+      case 'synergy':
+        this.playTone(600, 0.1, 'triangle', 0.3);
+        setTimeout(() => this.playTone(800, 0.1, 'triangle', 0.3), 100);
+        setTimeout(() => this.playTone(1000, 0.1, 'triangle', 0.3), 200);
+        setTimeout(() => this.playTone(1200, 0.15, 'triangle', 0.4), 300);
+        break;
+      case 'wall':
+        this.playTone(250, 0.15, 'square', 0.3);
+        setTimeout(() => this.playTone(300, 0.1, 'square', 0.2), 100);
+        break;
+      case 'charged_fire':
+        this.playTone(150, 0.05, 'square', 0.4);
+        this.playTone(300, 0.15, 'square', 0.4);
+        setTimeout(() => this.playTone(400, 0.1, 'square', 0.3), 100);
         break;
     }
   }
