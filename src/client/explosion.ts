@@ -33,16 +33,16 @@ export default class Explosion {
   scene: any;
   elapsed: number;
   duration: number;
-  geometry: any;
-  material: any;
-  particle: any;
+  material: THREE.PointsMaterial;
+  particle: THREE.Points;
   particles: Particle[];
+  positionAttr: THREE.BufferAttribute;
 
   // Secondary burst (sparks)
-  sparkGeometry: any;
-  sparkMaterial: any;
-  sparkCloud: any;
+  sparkMaterial: THREE.PointsMaterial;
+  sparkCloud: THREE.Points;
   sparkParticles: Particle[];
+  sparkPositionAttr: THREE.BufferAttribute;
 
   constructor(scene: any, position: any, weaponCode?: number) {
     this.position = position;
@@ -60,6 +60,14 @@ export default class Explosion {
       default: this.particleCount = 3000;
     }
 
+    // Initialize with defaults (overwritten in init)
+    this.material = null!;
+    this.particle = null!;
+    this.positionAttr = null!;
+    this.sparkMaterial = null!;
+    this.sparkCloud = null!;
+    this.sparkPositionAttr = null!;
+
     this.init(weaponCode);
   }
 
@@ -69,21 +77,19 @@ export default class Explosion {
     const accentColor = EXPLOSION_ACCENT[code] || EXPLOSION_ACCENT[0];
 
     // === Main explosion burst ===
-    this.geometry = new THREE.Geometry();
+    const positions = new Float32Array(this.particleCount * 3);
+    const colors = new Float32Array(this.particleCount * 3);
 
     for (let i = 0; i < this.particleCount; i++) {
-      // Spherical distribution for initial spread
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.random() * Math.PI;
       const spreadRadius = 2 + Math.random() * 3;
 
-      const vertex = new THREE.Vector3(
-        Math.sin(phi) * Math.cos(theta) * spreadRadius,
-        Math.sin(phi) * Math.sin(theta) * spreadRadius - 50,
-        Math.cos(phi) * spreadRadius,
-      );
+      const i3 = i * 3;
+      positions[i3] = Math.sin(phi) * Math.cos(theta) * spreadRadius;
+      positions[i3 + 1] = Math.sin(phi) * Math.sin(theta) * spreadRadius - 50;
+      positions[i3 + 2] = Math.cos(phi) * spreadRadius;
 
-      // Velocity: outward burst with randomness
       const speed = 150 + Math.random() * 350;
       const vx = Math.sin(phi) * Math.cos(theta) * speed * (0.7 + Math.random() * 0.6);
       const vy = Math.sin(phi) * Math.sin(theta) * speed * (0.5 + Math.random() * 1.0);
@@ -91,46 +97,45 @@ export default class Explosion {
 
       this.particles.push({
         vx, vy, vz,
-        gravity: 200 + Math.random() * 300, // varying gravity per particle
-        drag: 0.96 + Math.random() * 0.03,   // air resistance
+        gravity: 200 + Math.random() * 300,
+        drag: 0.96 + Math.random() * 0.03,
       });
 
-      // Per-vertex color: blend between base and accent
       const blend = Math.random();
-      const r = baseColor[0] * (1 - blend) + accentColor[0] * blend;
-      const g = baseColor[1] * (1 - blend) + accentColor[1] * blend;
-      const b = baseColor[2] * (1 - blend) + accentColor[2] * blend;
-      vertex.color = new THREE.Color(r, g, b);
-
-      this.geometry.vertices.push(vertex);
-      this.geometry.colors.push(vertex.color);
+      colors[i3] = baseColor[0] * (1 - blend) + accentColor[0] * blend;
+      colors[i3 + 1] = baseColor[1] * (1 - blend) + accentColor[1] * blend;
+      colors[i3 + 2] = baseColor[2] * (1 - blend) + accentColor[2] * blend;
     }
 
-    this.material = new THREE.PointCloudMaterial({
+    const geometry = new THREE.BufferGeometry();
+    this.positionAttr = new THREE.BufferAttribute(positions, 3);
+    geometry.setAttribute('position', this.positionAttr);
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    this.material = new THREE.PointsMaterial({
       size: 4 + Math.random() * 3,
-      vertexColors: THREE.VertexColors,
+      vertexColors: true,
       transparent: true,
       opacity: 1.0,
       depthWrite: false,
     });
 
-    this.particle = new THREE.PointCloud(this.geometry, this.material);
+    this.particle = new THREE.Points(geometry, this.material);
     this.particle.position.set(this.position.x, this.position.y, this.position.z);
     this.scene.add(this.particle);
 
     // === Spark ring (smaller, faster particles) ===
     const sparkCount = Math.floor(this.particleCount * 0.15);
-    this.sparkGeometry = new THREE.Geometry();
+    const sparkPositions = new Float32Array(sparkCount * 3);
+    const sparkColors = new Float32Array(sparkCount * 3);
 
     for (let i = 0; i < sparkCount; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const vertex = new THREE.Vector3(
-        Math.cos(angle) * 2,
-        -50 + Math.random() * 5,
-        Math.sin(angle) * 2,
-      );
+      const i3 = i * 3;
+      sparkPositions[i3] = Math.cos(angle) * 2;
+      sparkPositions[i3 + 1] = -50 + Math.random() * 5;
+      sparkPositions[i3 + 2] = Math.sin(angle) * 2;
 
-      // Fast horizontal ring burst
       const ringSpeed = 400 + Math.random() * 200;
       this.sparkParticles.push({
         vx: Math.cos(angle) * ringSpeed,
@@ -140,20 +145,25 @@ export default class Explosion {
         drag: 0.94,
       });
 
-      vertex.color = new THREE.Color(accentColor[0], accentColor[1], accentColor[2]);
-      this.sparkGeometry.vertices.push(vertex);
-      this.sparkGeometry.colors.push(vertex.color);
+      sparkColors[i3] = accentColor[0];
+      sparkColors[i3 + 1] = accentColor[1];
+      sparkColors[i3 + 2] = accentColor[2];
     }
 
-    this.sparkMaterial = new THREE.PointCloudMaterial({
+    const sparkGeometry = new THREE.BufferGeometry();
+    this.sparkPositionAttr = new THREE.BufferAttribute(sparkPositions, 3);
+    sparkGeometry.setAttribute('position', this.sparkPositionAttr);
+    sparkGeometry.setAttribute('color', new THREE.BufferAttribute(sparkColors, 3));
+
+    this.sparkMaterial = new THREE.PointsMaterial({
       size: 2,
-      vertexColors: THREE.VertexColors,
+      vertexColors: true,
       transparent: true,
       opacity: 1.0,
       depthWrite: false,
     });
 
-    this.sparkCloud = new THREE.PointCloud(this.sparkGeometry, this.sparkMaterial);
+    this.sparkCloud = new THREE.Points(sparkGeometry, this.sparkMaterial);
     this.sparkCloud.position.set(this.position.x, this.position.y, this.position.z);
     this.scene.add(this.sparkCloud);
   }
@@ -177,39 +187,38 @@ export default class Explosion {
     this.material.size = Math.max(1, (4 - progress * 3));
 
     // Update main particles
-    for (let i = 0; i < this.geometry.vertices.length; i++) {
-      const vertex = this.geometry.vertices[i];
+    const pos = this.positionAttr.array as Float32Array;
+    for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
+      const i3 = i * 3;
 
-      vertex.x += elapsed * p.vx;
-      vertex.y += elapsed * p.vy;
-      vertex.z += elapsed * p.vz;
+      pos[i3] += elapsed * p.vx;
+      pos[i3 + 1] += elapsed * p.vy;
+      pos[i3 + 2] += elapsed * p.vz;
 
-      // Gravity pulls down
       p.vy -= elapsed * p.gravity;
-
-      // Air drag
       p.vx *= p.drag;
       p.vy *= p.drag;
       p.vz *= p.drag;
     }
-    this.geometry.verticesNeedUpdate = true;
+    this.positionAttr.needsUpdate = true;
 
     // Update sparks
-    for (let i = 0; i < this.sparkGeometry.vertices.length; i++) {
-      const vertex = this.sparkGeometry.vertices[i];
+    const sparkPos = this.sparkPositionAttr.array as Float32Array;
+    for (let i = 0; i < this.sparkParticles.length; i++) {
       const p = this.sparkParticles[i];
+      const i3 = i * 3;
 
-      vertex.x += elapsed * p.vx;
-      vertex.y += elapsed * p.vy;
-      vertex.z += elapsed * p.vz;
+      sparkPos[i3] += elapsed * p.vx;
+      sparkPos[i3 + 1] += elapsed * p.vy;
+      sparkPos[i3 + 2] += elapsed * p.vz;
 
       p.vy -= elapsed * p.gravity;
       p.vx *= p.drag;
       p.vy *= p.drag;
       p.vz *= p.drag;
     }
-    this.sparkGeometry.verticesNeedUpdate = true;
+    this.sparkPositionAttr.needsUpdate = true;
 
     return true;
   }

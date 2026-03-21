@@ -1,20 +1,19 @@
 (function () {
     var renderAreaId = "render-area",
-        jsonloader = new THREE.JSONLoader(true),
         zombies = {},
         scene = null,
         zombie = null;
 
     function loadModel(name, path) {
         var $deferred = jQuery.Deferred();
-        jsonloader.load(path, function (geo, mat) {
-            var model = {
-                geometry: geo,
-                material: mat
-            };
-            zombies[name].model = model;
-            $deferred.resolve(model);
-        }, null, $deferred.reject);
+        fetch(path)
+            .then(function (res) { return res.json(); })
+            .then(function (json) {
+                var data = parseLegacyJSON(json);
+                zombies[name].model = data;
+                $deferred.resolve(data);
+            })
+            .catch($deferred.reject);
         return $deferred.promise();
     }
 
@@ -26,7 +25,7 @@
                 scene.remove(zombie.mesh);
             }
 
-            zombie = new ROME.Animal(newZombie.model.geometry, true);
+            zombie = new ROME.Animal(newZombie.model, true);
             zombie.play(zombie.availableAnimals[0], zombie.availableAnimals[0]);
             zombie.animalA.timeScale = zombie.animalB.timeScale = 0.9;
 
