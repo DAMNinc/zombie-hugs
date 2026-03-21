@@ -1,41 +1,38 @@
 {
     "zombies": [
         {
-            "name": "Flamingo",
-            "shortDescription": "Fast and high flying",
-            "features": [
-                "Reload time: 0.5 seconds",
-                "Health: 1"
-            ],
-            "modelPath": "/content/flamingo.json",
-            "previewScale": 0.8,
-            "previewOffset": {
-                "x": 0, 
-                "y": 0,
-                "z": -150
-            }
-        },
-        {
             "name": "Fox",
             "shortDescription": "Silent and almost invisible",
+            "tagline": "Quick, evasive, unpredictable",
+            "key": "1",
+            "color": "#cc5500",
             "features": [
                 "Reload time: 1 second",
-                "Health: 1"
+                "Health: 1 HP",
+                "Speed: 300",
+                "Special: Zigzag movement pattern",
+                "Hard to intercept due to sine-wave dodging"
             ],
             "modelPath": "/content/fox.json",
             "previewScale": 1.3,
             "previewOffset": {
-                "x": 0, 
-                "y": -25, 
+                "x": 0,
+                "y": -25,
                 "z": -150
             }
         },
         {
             "name": "Horse",
-            "shortDescription": "Bigger but slower",
+            "shortDescription": "Bigger but tougher",
+            "tagline": "Tough, relentless, pushes through",
+            "key": "2",
+            "color": "#8a6e2f",
             "features": [
                 "Reload time: 1.5 seconds",
-                "Health: 2"
+                "Health: 2 HP",
+                "Speed: 300",
+                "Special: Survives one collision and keeps going",
+                "Best for trading hits and pushing through defenses"
             ],
             "modelPath": "/content/horse.json",
             "previewScale": 0.4,
@@ -46,11 +43,38 @@
             }
         },
         {
+            "name": "Flamingo",
+            "shortDescription": "Fast and high flying",
+            "tagline": "Rapid fire, flies above ground units",
+            "key": "3",
+            "color": "#d4578a",
+            "features": [
+                "Reload time: 0.5 seconds (fastest)",
+                "Health: 1 HP",
+                "Speed: 300",
+                "Special: Flies high — only hit by other Flamingos",
+                "Spam-friendly, great for combos"
+            ],
+            "modelPath": "/content/flamingo.json",
+            "previewScale": 0.8,
+            "previewOffset": {
+                "x": 0,
+                "y": 0,
+                "z": -150
+            }
+        },
+        {
             "name": "Zombie",
             "shortDescription": "Undead and unstoppable",
+            "tagline": "Massive HP, slow but deadly",
+            "key": "4",
+            "color": "#2d8a2d",
             "features": [
                 "Reload time: 2 seconds",
-                "Health: 3"
+                "Health: 3 HP (highest)",
+                "Speed: 300",
+                "Special: Tanks through multiple collisions",
+                "Synergy: Fire before Horse for Juggernaut combo"
             ],
             "modelPath": "/content/zombie.json",
             "previewScale": 15,

@@ -2,29 +2,227 @@
 <script src="/js/zombie.js" defer></script>
 <script src="/content/js/gallery.js" defer></script>
 <style>
-    canvas {
-        width: 100%;
+  .gallery-hero {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    padding: 30px 20px;
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  .gallery-hero h1 {
+    font-size: 2.2em;
+    font-weight: 700;
+    margin: 0 0 6px 0;
+  }
+  .gallery-hero p {
+    color: #adb5bd;
+    margin: 0;
+    font-size: 1.05em;
+  }
+
+  .gallery-layout {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .gallery-sidebar {
+    flex: 0 0 240px;
+    min-width: 200px;
+  }
+  .gallery-preview {
+    flex: 1;
+    min-width: 280px;
+    min-height: 350px;
+    background: #111;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+  }
+  .gallery-preview canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+  }
+  .gallery-details {
+    flex: 0 0 300px;
+    min-width: 240px;
+  }
+
+  /* Creature list */
+  .creature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .creature-list li {
+    margin-bottom: 6px;
+  }
+  .creature-list a.zombie {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: #fff;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #333;
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+  .creature-list a.zombie:hover {
+    border-color: #999;
+    background: #f8f9fa;
+    text-decoration: none;
+  }
+  .creature-list a.zombie.active {
+    border-color: #4caf50;
+    background: #f0fff0;
+    box-shadow: 0 0 0 1px #4caf50;
+  }
+  .creature-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.1em;
+    font-family: monospace;
+    flex-shrink: 0;
+  }
+  .creature-meta h4 {
+    margin: 0;
+    font-size: 1em;
+    font-weight: 700;
+  }
+  .creature-meta p {
+    margin: 0;
+    font-size: 0.8em;
+    color: #888;
+  }
+
+  /* Details panel */
+  .detail-name {
+    font-size: 1.6em;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .detail-tagline {
+    color: #888;
+    font-size: 0.95em;
+    margin-bottom: 16px;
+    font-style: italic;
+  }
+  .feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .feature-list li {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 0.9em;
+    color: #555;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .feature-list li:last-child { border-bottom: none; }
+  .feature-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 6px;
+  }
+
+  /* Synergy tips */
+  .synergy-section {
+    margin-top: 24px;
+    padding: 16px;
+    background: #f0f7ff;
+    border-radius: 8px;
+    border: 1px solid #d0e3f7;
+  }
+  .synergy-section h4 {
+    margin: 0 0 10px 0;
+    font-size: 1em;
+    font-weight: 700;
+    color: #1565c0;
+  }
+  .synergy-item {
+    font-size: 0.85em;
+    color: #555;
+    padding: 4px 0;
+  }
+  .synergy-item strong { color: #333; }
+
+  /* Preview label */
+  .preview-hint {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.4);
+    font-size: 0.8em;
+    font-family: monospace;
+    pointer-events: none;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .gallery-layout { flex-direction: column; }
+    .gallery-sidebar { flex: none; width: 100%; }
+    .gallery-sidebar .creature-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
     }
+    .gallery-sidebar .creature-list li { margin-bottom: 0; flex: 1 1 45%; }
+    .creature-list a.zombie { padding: 8px 10px; }
+    .gallery-details { flex: none; width: 100%; }
+    .gallery-preview { min-height: 250px; }
+    .gallery-hero h1 { font-size: 1.6em; }
+  }
 </style>
 {{/section}}
-<div class="container">
-	<div class="row">
-		<div class="col-sm-12">
-		    <h3>Zombies</h3>
-		</div>
-	</div>
-    <div class="row">
-        <div class="col-sm-3 zombie-list">
-            <!-- Zombies are loaded from json file -->
-        </div>
-        <div class="col-sm-5" id="render-area">Preview
-        </div>
-        <div class="col-sm-4">
-            <h4>Key features</h4>
-            <ul class="zombie-features">
-                <!-- Features inserted run-time by jQuery -->
-            </ul>
-        </div>
-    </div>
+
+<div class="gallery-hero">
+  <h1>Creature Gallery</h1>
+  <p>Meet the creatures you'll command in battle</p>
 </div>
 
+<div class="container">
+  <div class="gallery-layout">
+
+    <div class="gallery-sidebar">
+      <ul class="creature-list zombie-list">
+        <!-- Populated by gallery.js -->
+      </ul>
+    </div>
+
+    <div class="gallery-preview" id="render-area">
+      <span class="preview-hint">auto-rotating preview</span>
+    </div>
+
+    <div class="gallery-details">
+      <div class="detail-name" id="detail-name">Select a creature</div>
+      <div class="detail-tagline" id="detail-tagline"></div>
+      <ul class="feature-list zombie-features">
+        <!-- Populated by gallery.js -->
+      </ul>
+
+      <div class="synergy-section">
+        <h4>Synergy Combos</h4>
+        <div class="synergy-item"><strong>Fox + Flamingo</strong> &rarr; Air Strike (1.5x speed)</div>
+        <div class="synergy-item"><strong>Horse + Horde</strong> &rarr; Stampede (+3 extra creatures)</div>
+        <div class="synergy-item"><strong>Zombie + Horse</strong> &rarr; Juggernaut (+2 HP)</div>
+        <div class="synergy-item"><strong>Fox + Fox + Fox</strong> &rarr; Twin Strike (+1 extra fox)</div>
+      </div>
+    </div>
+
+  </div>
+</div>

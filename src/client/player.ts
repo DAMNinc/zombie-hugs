@@ -77,6 +77,9 @@ export default class Player {
     return this.weaponCode;
   }
 
+  // Interpolation target
+  private targetX: number | null = null;
+
   update(elapsed: number): void {
     let changeX = 0;
     const tr = 100.0;
@@ -89,12 +92,27 @@ export default class Player {
 
     this.mesh.position.x += changeX;
 
+    // Smooth interpolation toward server position
+    if (this.targetX !== null) {
+      const diff = this.targetX - this.mesh.position.x;
+      const lerpFactor = Math.min(1, elapsed * 8);
+      if (Math.abs(diff) < 2) {
+        this.targetX = null;
+      } else {
+        this.mesh.position.x += diff * lerpFactor;
+      }
+    }
+
     this.weapon.getMesh().position.x += changeX;
     this.weapon.update(elapsed);
   }
 
   setPosition(position: any): void {
-    this.mesh.position.set(position.x, position.y - 40, position.z);
+    // Lerp X instead of snapping to reduce jitter
+    this.targetX = position.x;
+    // Y and Z can snap — Z doesn't change, Y is constant
+    this.mesh.position.y = position.y - 40;
+    this.mesh.position.z = position.z;
   }
 
   setScore(score: number): void {

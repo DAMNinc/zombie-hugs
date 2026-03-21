@@ -534,6 +534,10 @@ export default class Fox {
   spawnTime: number;
   baseX: number;
 
+  // Interpolation targets
+  private targetX: number | null = null;
+  private targetZ: number | null = null;
+
   constructor(direction: number, zombieModel: any, name?: string, weaponCode?: number) {
     this.offset = zombieModel.offset;
     this.health = zombieModel.health;
@@ -554,12 +558,35 @@ export default class Fox {
   }
 
   update(elapsed: number): void {
+    // Smooth interpolation toward server target
+    const lerpFactor = Math.min(1, elapsed * 10); // ~10x per second convergence
+
+    if (this.targetZ !== null) {
+      const currentZ = this.foxObj.mesh.position.z;
+      const diff = (this.targetZ + this.offset.z) - currentZ;
+      // If close enough, let client-side prediction take over
+      if (Math.abs(diff) < 5) {
+        this.targetZ = null;
+      } else {
+        this.foxObj.mesh.position.z += diff * lerpFactor;
+      }
+    }
+
+    // Client-side prediction: keep moving forward
     this.foxObj.mesh.position.z += elapsed * this.speed * this.direction;
 
     // Fox zigzag
     if (this.weaponCode === 1 && this.speed > 0) {
       const timeSinceSpawn = (Date.now() - this.spawnTime) / 1000;
       this.foxObj.mesh.position.x = this.baseX + this.offset.x + Math.sin(timeSinceSpawn * 4) * 50;
+    } else if (this.targetX !== null) {
+      const currentX = this.foxObj.mesh.position.x;
+      const diffX = (this.targetX + this.offset.x) - currentX;
+      if (Math.abs(diffX) < 5) {
+        this.targetX = null;
+      } else {
+        this.foxObj.mesh.position.x += diffX * lerpFactor;
+      }
     }
 
     this.foxObj.update(elapsed * 1000);
@@ -574,10 +601,10 @@ export default class Fox {
   }
 
   setPosition(position: any): void {
-    this.foxObj.mesh.position.set(
-      position.x + this.offset.x,
-      position.y - 50 + this.offset.y,
-      position.z + this.offset.z,
-    );
+    // Set interpolation targets instead of snapping
+    this.targetX = position.x;
+    this.targetZ = position.z;
+    // Y can snap — it doesn't change during gameplay
+    this.foxObj.mesh.position.y = position.y - 50 + this.offset.y;
   }
 }
