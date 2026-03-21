@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import Constants, { healthFromCode } from './constants';
+import { loadLegacyJSON, LegacyModelData } from './LegacyJSONLoader';
 
 export default class Models {
   missing: number;
-  fox: any;
-  flamingo: any;
-  horse: any;
-  zombie: any;
-  player: any;
+  fox: LegacyModelData | null;
+  flamingo: LegacyModelData | null;
+  horse: LegacyModelData | null;
+  zombie: LegacyModelData | null;
+  player: LegacyModelData | null;
 
   constructor() {
     this.missing = 0;
@@ -17,35 +18,19 @@ export default class Models {
     this.zombie = null;
     this.player = null;
 
-    const jsonloader = new THREE.JSONLoader(true);
-
-    this.load(jsonloader, '/content/fox.json', (geo: any) => {
-      this.fox = geo;
-    });
-    this.load(jsonloader, '/content/flamingo.json', (geo: any) => {
-      this.flamingo = geo;
-    });
-    this.load(jsonloader, '/content/horse.json', (geo: any) => {
-      this.horse = geo;
-    });
-    this.load(jsonloader, '/content/zombie.json', (geo: any) => {
-      this.zombie = geo;
-    });
-    this.load(jsonloader, '/content/monster.json', (geo: any) => {
-      this.player = geo;
-    });
+    this.load('/content/fox.json', (data) => { this.fox = data; });
+    this.load('/content/flamingo.json', (data) => { this.flamingo = data; });
+    this.load('/content/horse.json', (data) => { this.horse = data; });
+    this.load('/content/zombie.json', (data) => { this.zombie = data; });
+    this.load('/content/monster.json', (data) => { this.player = data; });
   }
 
-  private load(loader: any, file: string, result: (geo: any) => void): void {
+  private load(file: string, result: (data: LegacyModelData) => void): void {
     this.missing++;
     console.log('loading ' + file);
-    loader.load(file, (geo: any, mat: any) => {
+    loadLegacyJSON(file).then((data) => {
       console.log(file + ' loaded');
-      console.log(mat);
-      result({
-        geometry: geo,
-        materials: mat,
-      });
+      result(data);
       this.missing--;
     });
   }
@@ -75,8 +60,9 @@ export default class Models {
   }
 
   getPlayer(direction: number): any {
-    const material = new THREE.MeshFaceMaterial(this.player.materials);
-    const mesh = new THREE.Mesh(this.player.geometry, material);
+    const data = this.player!;
+    const material = data.materials.length > 1 ? data.materials : data.materials[0];
+    const mesh = new THREE.Mesh(data.geometry.clone(), material);
     mesh.scale.set(0.05, 0.05, 0.05);
     mesh.rotation.y = Math.PI * 0.5 * direction;
     return mesh;

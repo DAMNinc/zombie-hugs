@@ -13,9 +13,11 @@ import HUD from './hud';
 import Audio from './audio';
 import ScreenShake from './screenshake';
 import KillFeed from './killfeed';
+import { parseLegacyJSON } from './LegacyJSONLoader';
 
-// Expose THREE globally for non-bundled scripts (gallery.js)
+// Expose THREE and helpers globally for non-bundled scripts (gallery.js)
 (window as any).THREE = THREE;
+(window as any).parseLegacyJSON = parseLegacyJSON;
 
 let camera: any = null;
 let camController: CamController | null = null;
@@ -866,8 +868,7 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   skyGrad.addColorStop(1, '#d4e8d0');    // greenish haze at bottom
   skyCtx.fillStyle = skyGrad;
   skyCtx.fillRect(0, 0, 1, 256);
-  const skyTexture = new THREE.Texture(skyCanvas);
-  skyTexture.needsUpdate = true;
+  const skyTexture = new THREE.CanvasTexture(skyCanvas);
   const skyGeo = new THREE.SphereGeometry(4500, 32, 15);
   const skyMat = new THREE.MeshBasicMaterial({ map: skyTexture, side: THREE.BackSide, fog: false });
   const skyDome = new THREE.Mesh(skyGeo, skyMat);
@@ -876,7 +877,7 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   camera = new THREE.PerspectiveCamera(45, 100 / 100, 1, 10000);
 
   // Lighting: warm sun + cool fill
-  const hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 10);
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 2);
   hemiLight.color.setHSL(0.6, 1, 0.6);
   hemiLight.groundColor.setHSL(0.095, 1, 0.75);
   hemiLight.position.set(0, 500, 0);

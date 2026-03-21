@@ -156,8 +156,8 @@ export default class Terrain {
   getMesh(): any {
     const data = generateHeight();
 
-    const geometry = new THREE.PlaneBufferGeometry(7500, 7500, terrainWidth - 1, terrainHeight - 1);
-    geometry.applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+    const geometry = new THREE.PlaneGeometry(7500, 7500, terrainWidth - 1, terrainHeight - 1);
+    geometry.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
 
     const vertices = geometry.attributes.position.array;
 
@@ -171,13 +171,9 @@ export default class Terrain {
       }
     }
 
-    const texture = new THREE.Texture(
-      generateTexture(data),
-      THREE.UVMapping,
-      THREE.ClampToEdgeWrapping,
-      THREE.ClampToEdgeWrapping,
-    );
-    texture.needsUpdate = true;
+    const texture = new THREE.CanvasTexture(generateTexture(data));
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
 
     return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture }));
   }
