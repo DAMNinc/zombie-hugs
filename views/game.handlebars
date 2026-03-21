@@ -53,7 +53,7 @@
         var gameId = {{ game.id }};
         var params = {
             gameId: gameId,
-            isSpectator: window.location.href.indexOf('spectate') >= 0, // spectator depends on a simple search of the browser url.
+            isSpectator: window.location.href.indexOf('spectate') >= 0,
             renderAreaId: 'render-area',
             exitButtonId: 'exit-button'
         };
@@ -61,7 +61,7 @@
         window.addEventListener('join.spectator.full', function() {
           $('#full-modal').modal();
         });
-    
+
         // Start the game
         ZombieHugs.start(params);
     });
