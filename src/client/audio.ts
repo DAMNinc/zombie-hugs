@@ -1,4 +1,4 @@
-type SoundName = 'fire' | 'collision' | 'score' | 'damage' | 'weapon_switch' | 'countdown' | 'game_start' | 'game_over' | 'shield' | 'combo' | 'powerup' | 'sudden_death' | 'synergy' | 'wall' | 'charged_fire' | 'groan';
+type SoundName = 'fire' | 'collision' | 'score' | 'damage' | 'weapon_switch' | 'countdown' | 'game_start' | 'game_over' | 'shield' | 'combo' | 'powerup' | 'sudden_death' | 'synergy' | 'wall' | 'charged_fire' | 'groan' | 'fanfare';
 
 // Procedurally generated sound effects using Web Audio API
 export default class Audio {
@@ -91,6 +91,13 @@ export default class Audio {
         break;
       case 'groan':
         this.playGroan();
+        break;
+      case 'fanfare':
+        this.playTone(523, 0.15, 'square', 0.25);
+        setTimeout(() => this.playTone(659, 0.15, 'square', 0.25), 150);
+        setTimeout(() => this.playTone(784, 0.15, 'square', 0.25), 300);
+        setTimeout(() => this.playTone(1047, 0.2, 'square', 0.25), 450);
+        setTimeout(() => this.playTone(1319, 0.5, 'square', 0.3), 700);
         break;
     }
   }

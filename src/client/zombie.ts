@@ -963,7 +963,7 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   audio = new Audio();
   screenShake = new ScreenShake(camera);
   killFeed = new KillFeed();
-  easterEggs = new EasterEggs(audio);
+  easterEggs = new EasterEggs(audio, () => gameState.zombies);
   hud = new HUD(isSpectator);
 
   handleResize();

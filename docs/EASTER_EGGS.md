@@ -6,9 +6,9 @@ In-game eggs (a, d) are desktop-keyboard only, for players and spectators. They 
 
 ## (a) Konami code
 - Trigger: during a game, ArrowUp ArrowUp ArrowDown ArrowDown ArrowLeft ArrowRight ArrowLeft ArrowRight b a.
-- Effect: rainbow/"disco" coloured creatures plus a fanfare for a few seconds.
-- Safety: original creature materials restored on cleanup; cooldown >= 10 s.
-- Code: `src/client/easterEggs.ts` (planned: entry in `EGGS`).
+- Effect: for 7 s every creature on screen (including ones spawning meanwhile) cycles through hues, plus a short rising `'fanfare'` (~1.2 s).
+- Safety: the egg turns off `vertexColors` on each creature's per-instance material and sets `material.color` from HSL each animation frame; cleanup restores `vertexColors = true` and the original colour (white) on every touched material, also if the creature was removed or the phase ended early. Arrow keys / b / a still reach `camController`. Cooldown 10 s.
+- Code: `src/client/easterEggs.ts` (`konamiEgg`, `runDisco`; creatures come from `EggContext.getCreatures`, passed as `new EasterEggs(audio, () => gameState.zombies)` in `src/client/zombie.ts`), `'fanfare'` in `src/client/audio.ts`.
 
 ## (b) Title x5
 - Trigger: click/tap the "Zombie Hugs" `h1` on the landing page 5 times quickly.

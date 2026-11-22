@@ -10,6 +10,8 @@ const MAX_EGG_MS = 9000;
 
 export interface EggContext {
   audio: Audio | null;
+  // Live creatures (gameState.zombies); read on demand, never cached.
+  getCreatures: () => Record<string, any>;
 }
 
 export interface Egg {
@@ -68,13 +70,76 @@ const brainsEgg: Egg = {
   run: runBrains,
 };
 
+// --- Egg: Konami "disco" -------------------------------------------------
+
+const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+
+interface SavedMaterial {
+  material: any;
+  vertexColors: boolean;
+  colorHex: number;
+}
+
+function runDisco(ctx: EggContext): () => void {
+  if (ctx.audio) ctx.audio.play('fanfare');
+
+  // Per-creature materials we changed, keyed by material so a creature that is
+  // removed (or re-seen) never causes errors or double-saving.
+  const saved = new Map<any, SavedMaterial>();
+  let rafId = 0;
+  let stopped = false;
+  const startedAt = performance.now();
+
+  const tick = (): void => {
+    if (stopped) return;
+    const t = (performance.now() - startedAt) / 1000;
+    let creatures: Record<string, any> = {};
+    try { creatures = ctx.getCreatures() || {}; } catch { /* ignore */ }
+    let i = 0;
+    for (const key in creatures) {
+      const mat = creatures[key]?.foxObj?.mesh?.material;
+      if (!mat || !mat.color || Array.isArray(mat)) continue;
+      if (!saved.has(mat)) {
+        saved.set(mat, { material: mat, vertexColors: mat.vertexColors, colorHex: mat.color.getHex() });
+        mat.vertexColors = false; // plain material colour so the hue is visible
+        mat.needsUpdate = true;
+      }
+      mat.color.setHSL((t * 0.8 + i * 0.13) % 1, 1, 0.55);
+      i++;
+    }
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
+
+  return () => {
+    stopped = true;
+    cancelAnimationFrame(rafId);
+    saved.forEach((s) => {
+      s.material.vertexColors = s.vertexColors;
+      s.material.color.setHex(s.colorHex);
+      s.material.needsUpdate = true;
+    });
+    saved.clear();
+  };
+}
+
+const konamiEgg: Egg = {
+  id: 'konami',
+  cooldownMs: 10000,
+  durationMs: 7000,
+  match: (keys) => endsWith(keys, KONAMI),
+  run: runDisco,
+};
+
 // --- Registry: add an egg by adding one entry here -----------------------
 const EGGS: Egg[] = [
   brainsEgg,
+  konamiEgg,
 ];
 
 export default class EasterEggs {
   private audio: Audio | null;
+  private getCreatures: () => Record<string, any>;
   private active = false;
   private buffer: string[] = [];
   private lastKeyAt = 0;
@@ -83,8 +148,9 @@ export default class EasterEggs {
   private cleanup: (() => void) | null = null;
   private cleanupTimer: number | null = null;
 
-  constructor(audio: Audio | null) {
+  constructor(audio: Audio | null, getCreatures: () => Record<string, any> = () => ({})) {
     this.audio = audio;
+    this.getCreatures = getCreatures;
     window.addEventListener('keydown', this.onKeyDown, { passive: true });
   }
 
@@ -140,7 +206,7 @@ export default class EasterEggs {
     this.buffer = [];
     this.running = true;
     try {
-      this.cleanup = egg.run({ audio: this.audio });
+      this.cleanup = egg.run({ audio: this.audio, getCreatures: this.getCreatures });
     } catch {
       this.cleanup = null;
       this.running = false;
