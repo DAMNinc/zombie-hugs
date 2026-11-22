@@ -27,7 +27,7 @@ export function isLobbyPhase(phase: string): boolean {
 
 /** The mode the room would start in, as the player reads it. */
 export function modeLabel(mode: RoomMode, humans: number): string {
-  if (mode === 'solo') return 'Solo practice vs bot';
+  if (mode === 'solo') return 'Practice vs bot';
   if (mode === 'duel') return 'Duel';
   return `Brawl — ${humans} players`;
 }

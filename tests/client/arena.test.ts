@@ -67,11 +67,11 @@ describe('targeting', () => {
 
 describe('misc', () => {
   it('arena from state', () => {
-    expect(arenaFromState('brawl', 'playing')).toBe('square');
-    expect(arenaFromState('duel', 'playing')).toBe('lane');
-    expect(arenaFromState('duel', 'lobby')).toBe('lane');
-    expect(arenaFromState('solo', 'lobby')).toBe('lane');
-    expect(arenaFromState(undefined, 'lobby')).toBeNull();
+    expect(arenaFromState('brawl')).toBe('square');
+    expect(arenaFromState('duel')).toBe('lane');
+    expect(arenaFromState('duel')).toBe('lane');
+    expect(arenaFromState('solo')).toBe('lane');
+    expect(arenaFromState(undefined)).toBeNull();
   });
   it('colours', () => {
     expect(seatColor(2)).toBe('#F0E442');

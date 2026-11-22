@@ -1,5 +1,5 @@
 import type { Socket } from 'socket.io';
-import { fireDelayFromCode } from './controller';
+import { fireDelayFromCode } from './weapons';
 import type { Game, Player } from './controller';
 import { ARENA_HALF_WIDTH, ARENA_MARGIN } from './validate';
 

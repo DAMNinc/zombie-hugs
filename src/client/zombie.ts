@@ -531,6 +531,8 @@ function removePlayer(id: string): void {
   const existing = gameState.players[id];
   if (!existing) return;
   scene.remove(existing.getMesh());
+  // Only the geometry is a per-player clone; the materials are shared with other players.
+  existing.getMesh().geometry?.dispose();
   removeTag(id);
   delete gameState.players[id];
   updateEdgeColors();
@@ -751,12 +753,12 @@ function updateBrawlVisuals(): void {
 /** Brawl HUD from a `state` payload: standings, round clock, sudden-death roster, knocked-out dimming. */
 function updateBrawlHud(state: any): void {
   if (!hud) return;
-  const live = state.mode === 'brawl' && !!gameState.myId && (state.phase === 'playing' || state.phase === 'sudden_death' || state.phase === 'countdown');
+  const live = state.mode === 'brawl' && (state.phase === 'playing' || state.phase === 'sudden_death' || state.phase === 'countdown');
   if (state.mode !== 'brawl') { hud.brawl.setActive(false); hud.brawl.reset(); }
   else if (state.phase !== 'match_over') hud.brawl.setActive(live);
   killFeed?.setMaxEntries(live ? (isTouch() ? 4 : 6) : 8);
   if (!live) return;
-  hud.brawl.setMyId(gameState.myId);
+  hud.brawl.setMyId(gameState.myId ?? '');
   const down = new Set<string>();
   for (const id in state.players) if (state.players[id] && state.players[id].alive === false) down.add(id);
   if (Array.isArray(state.standings)) hud.brawl.setStandings(state.standings as StandingRow[], down);
@@ -933,7 +935,7 @@ function setupEvents(): void {
     // Covers spectators/reloads joining mid-round (state is broadcast every 200 ms)
     if (easterEggs) easterEggs.setPhase(state.phase === 'playing' || state.phase === 'sudden_death');
     matchPhase = state.phase || matchPhase;
-    const wanted = arenaFromState(state.mode, state.phase);
+    const wanted = arenaFromState(state.mode);
     if (wanted) applyArena(wanted);
     for (const key in state.zombies) {
       const serverZombie = state.zombies[key];
@@ -1078,10 +1080,12 @@ function setupEvents(): void {
       }
     }
 
-    if (audio) audio.play('score');
+    // Brawl: the score sound only when I fired or was hit; the hit itself shakes via player.damage.
+    if (audio && (arena !== 'square' || firedByPlayerId === gameState.myId || hitPlayerId === gameState.myId)) audio.play('score');
 
-    // Screen shake when scored against
-    if (firedByPlayerId !== gameState.myId && screenShake) {
+    // Screen shake when scored against. Lane: any creature that is not mine is aimed at me.
+    // Square: not here; a hit on me arrives as player.damage (shake, flash, attacker arrow).
+    if (arena !== 'square' && firedByPlayerId !== gameState.myId && screenShake) {
       screenShake.trigger(15);
       if (audio) audio.play('damage');
     }
@@ -1544,12 +1548,6 @@ function animate(): void {
  * Tells the game that a player wants to join the current game.
  */
 function joinPlayer(gameId: number): void {
-  socket.on('join.error.full', () => {
-    joinSpectator(gameId);
-    const ev = new Event('join.spectator.full');
-    window.dispatchEvent(ev);
-  });
-
   socket.on('join.error.notfound', () => {
     window.location.href = '/';
   });

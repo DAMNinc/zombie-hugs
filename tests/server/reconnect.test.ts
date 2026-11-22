@@ -197,6 +197,30 @@ describe('reconnect window', () => {
     expect(game.phase).toBe('match_over');
   });
 
+  it('a player who reconnects in match_over gets the results again and can vote the rematch through', () => {
+    const { game, sockets } = playing(3, 'm');
+    const token = tokenOf(sockets[2]);
+    game.endBrawlMatch('m0');
+    expect(game.phase).toBe('match_over');
+    sockets[2].trigger('disconnect');
+    expect(game.players['m2'].connected).toBe(false);
+
+    const fresh = connect('mfresh');
+    fresh.trigger('join.player', { gameId: game.id, token });
+    expect(game.players['m2'].socket).toBe(fresh);
+    const replay = fresh.events('match.over');
+    expect(replay).toHaveLength(1);
+    expect(replay[0].args[0]).toMatchObject({ mode: 'brawl', winner: 'm0', ranked: false });
+
+    sockets[0].trigger('rematch');
+    sockets[1].trigger('rematch');
+    expect(game.phase).toBe('match_over');
+    fresh.trigger('rematch');
+    expect(game.phase).not.toBe('match_over');
+    expect(game.lastMatchOver).toBeNull();
+    expect(sockets[0].events('game.rematch')).toHaveLength(1);
+  });
+
   it('stop() clears pending reconnect timers', () => {
     const { game, sockets } = playing(2);
     sockets[0].trigger('disconnect');

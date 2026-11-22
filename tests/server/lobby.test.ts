@@ -335,10 +335,10 @@ describe('mode by headcount', () => {
     readyAll(sockets);
     sockets[2].trigger('exit');
     sockets[1].trigger('exit');
-    expect(game.phase).toBe('match_over');
-    expect(game.countdownTimer).toBeNull();
-    sockets[0].trigger('lobby.return');
+    // Nobody played: back to the lobby, no results screen and no winner.
     expect(game.phase).toBe('lobby');
+    expect(game.countdownTimer).toBeNull();
+    expect(sockets[0].events('match.over')).toHaveLength(0);
   });
 
   it('leaving a lobby that is otherwise ready starts the countdown (duel)', () => {
@@ -421,10 +421,9 @@ describe('mode by headcount', () => {
     expect(getElo('lobby-ne-l')).toBe(1000);
   });
 
-  it('createBot returns a bot player on a no-op socket', () => {
+  it('createBot returns a bot player with the bot id', () => {
     const bot = createBot(new Game(77));
     expect(bot).toMatchObject({ isBot: true, seat: 1, id: 'bot-77' });
-    expect(() => bot.socket.emit('x')).not.toThrow();
   });
 });
 

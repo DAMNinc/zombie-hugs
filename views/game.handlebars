@@ -14,22 +14,6 @@
     <div id="render-area">
     </div>
 
-    <div class="modal fade" id="full-modal" tabindex="-1" role="dialog">
-      <div class="modal-dialog" role="document">
-        <div class="modal-content">
-          <div class="modal-header">
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-            <h4 class="modal-title" id="myModalLabel">Game is Full</h4>
-          </div>
-          <div class="modal-body">
-            The game is full, so you will join as a spectator. Enjoy :-)
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <div id="float-area">
       <button type="button" id="exit-button" class="btn btn-default">
@@ -49,10 +33,6 @@
             renderAreaId: 'render-area',
             exitButtonId: 'exit-button'
         };
-
-        window.addEventListener('join.spectator.full', function() {
-          $('#full-modal').modal();
-        });
 
         // Start the game
         window.ZombieHugs.start(params);

@@ -8,7 +8,7 @@ const seat = (over: any = {}) => ({ seat: 0, id: 'a', name: 'Ann', color: '#0072
 
 describe('lobbyModel', () => {
   it('labels the mode the room would start in', () => {
-    expect(modeLabel('solo', 1)).toBe('Solo practice vs bot');
+    expect(modeLabel('solo', 1)).toBe('Practice vs bot');
     expect(modeLabel('duel', 2)).toBe('Duel');
     expect(modeLabel('brawl', 3)).toBe('Brawl — 3 players');
   });

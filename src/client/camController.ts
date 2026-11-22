@@ -15,7 +15,6 @@ const THIRD_PERSON_BACK = 400;
 const SYNTH_MOUSE_MS = 500;
 
 export default class CamController {
-  direction: number;
   weapon: number;
   left: boolean;
   right: boolean;
@@ -46,7 +45,6 @@ export default class CamController {
 
     spectatorMode = !sock;
 
-    this.direction = direction;
     this.weapon = Constants.FOX;
     this.left = false;
     this.right = false;
@@ -256,7 +254,6 @@ export default class CamController {
   setView(view: EdgeView, lateral: number): void {
     this.clearShake?.();
     this.view = view;
-    this.direction = view.direction;
     this.fixedCoord = view.fixed;
     this.thirdPerson = false;
     camera.position[view.fixedAxis] = view.fixed;

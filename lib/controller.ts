@@ -11,6 +11,7 @@ import logger from './logger';
 import { BRAWL_SPAWN_RANGE, CLOCKWISE_SEATS, EDGES, SQUARE_HALF, WALL_OFFSET, clampEdgeTravel, edgePoint, exitedEdge, headingTo, lateralOf, validFireLateral } from './arena';
 import type { Axis, Edge } from './arena';
 import { BotBrain } from './bot';
+import { healthFromCode, speedFromCode, fireDelayFromCode } from './weapons';
 import { ARENA_HALF_WIDTH, ARENA_MARGIN, MAX_CHARGE_MS, clampArenaX, effectiveCharge, isFiniteNumber, validFireX, validToken, validWeaponCode } from './validate';
 
 interface Position {
@@ -125,35 +126,6 @@ interface FiredCreatureRecord {
   time: number;
 }
 
-function healthFromCode(code: number): number {
-  switch (code) {
-    case 1: return 1;
-    case 2: return 2;
-    case 3: return 1;
-    case 4: return 3;
-    case 5: return 1;
-    default: return 1;
-  }
-}
-
-function speedFromCode(code: number): number {
-  switch (code) {
-    case 5: return 200;
-    default: return 300;
-  }
-}
-
-function fireDelayFromCode(code: number): number {
-  switch (code) {
-    case 1: return 1000;
-    case 2: return 1500;
-    case 3: return 500;
-    case 4: return 2000;
-    case 5: return 3000;
-    default: return 1000;
-  }
-}
-
 // In-memory ELO store (keyed by player name since we don't have accounts)
 const eloStore: Record<string, number> = {};
 
@@ -242,6 +214,8 @@ class Game {
   suddenIds: string[];
   suddenStart: number;
   lastStandingsKey: string;
+  /** The last `match.over` payload, replayed to a player who reconnects while the room is in match_over. */
+  lastMatchOver: Record<string, unknown> | null = null;
   hazards: Hazard[];
   walls: Record<string, Wall>;
   roundStartTime: number;
@@ -772,6 +746,7 @@ class Game {
       socket.emit('powerup.spawn', this.powerUps[puId]);
     }
     socket.emit('elo', getElo(player.name));
+    if (this.phase === 'match_over' && this.lastMatchOver) socket.emit('match.over', this.lastMatchOver);
     this.emitAll('player.reconnected', player.id);
     this.broadcastLobby();
   }
@@ -1176,6 +1151,35 @@ class Game {
   }
 
   /**
+   * The state every reset path clears: creatures, power-ups, walls, hazards, brawl state, the stored `match.over`.
+   * `newMatch` also zeroes round, wins and stats and the rematch votes (lobby / rematch); without it only the
+   * players are readied for the next round.
+   */
+  clearMatchState(opts: { newMatch?: boolean } = {}) {
+    this.zombies = {};
+    this.powerUps = {};
+    this.walls = {};
+    this.hazards = [];
+    this.suddenDeath = false;
+    this.resetBrawlState();
+    this.lastStandingsKey = '';
+    this.lastMatchOver = null;
+    if (opts.newMatch) {
+      this.round = 1;
+      this.roundWins = {};
+      this.stats = {};
+    }
+    for (const id in this.players) {
+      if (opts.newMatch) {
+        this.roundWins[id] = 0;
+        this.stats[id] = new PlayerStats();
+        this.players[id].wantsRematch = false;
+      }
+      this.players[id].resetForRound();
+    }
+  }
+
+  /**
    * Back to a fresh lobby for whoever is still here: bot removed, queued spectators take free seats.
    * `ready` is what the remaining humans' ready flag becomes: everybody readies again by default.
    */
@@ -1195,22 +1199,8 @@ class Game {
       delete this.players[p.id];
     }
     this.phase = 'lobby';
-    this.round = 1;
-    this.zombies = {};
-    this.powerUps = {};
-    this.walls = {};
-    this.hazards = [];
-    this.suddenDeath = false;
-    this.resetBrawlState();
-    this.roundWins = {};
-    this.stats = {};
-    for (const id in this.players) {
-      this.roundWins[id] = 0;
-      this.stats[id] = new PlayerStats();
-      this.players[id].resetForRound();
-      this.players[id].wantsRematch = false;
-      this.players[id].ready = ready;
-    }
+    this.clearMatchState({ newMatch: true });
+    for (const id in this.players) this.players[id].ready = ready;
     this.mode = this.previewMode();
     this.emitAll('game.reset');
     this.fillSeatsFromQueue();
@@ -1231,7 +1221,7 @@ class Game {
   }
 
   emitBrawlOver(winnerId: string) {
-    this.emitAll('match.over', {
+    this.emitMatchOver({
       mode: this.mode,
       ranked: false,
       winner: winnerId,
@@ -1239,6 +1229,11 @@ class Game {
       standings: this.standings(),
       stats: this.stats,
     });
+  }
+
+  emitMatchOver(payload: Record<string, unknown>) {
+    this.lastMatchOver = payload;
+    this.emitAll('match.over', payload);
   }
 
   /** `lobby.return`: everyone back to the lobby (after a match, or any time during a solo match). */
@@ -1257,20 +1252,8 @@ class Game {
     if (!allWant) return;
 
     this.removeBot();
-    this.round = 1;
-    this.roundWins = {};
-    this.stats = {};
-    this.zombies = {};
-    this.powerUps = {};
-    this.walls = {};
-    this.suddenDeath = false;
     this.phase = 'lobby';
-    for (const p of humans) {
-      this.roundWins[p.id] = 0;
-      this.stats[p.id] = new PlayerStats();
-      p.resetForRound();
-      p.wantsRematch = false;
-    }
+    this.clearMatchState({ newMatch: true });
     this.emitAll('game.rematch');
 
     // Queued spectators take any free seats; the new roster starts straight away.
@@ -1282,13 +1265,7 @@ class Game {
   }
 
   resetForNextRound() {
-    for (const key in this.players) {
-      this.players[key].resetForRound();
-    }
-    this.zombies = {};
-    this.powerUps = {};
-    this.walls = {};
-    this.suddenDeath = false;
+    this.clearMatchState();
 
     for (const key in this.players) {
       this.players[key].ready = true;
@@ -1322,7 +1299,8 @@ class Game {
       this.broadcastLobby();
     } else if (this.mode === 'brawl' && humansLeft.length === 1) {
       // Down to one human: the brawl ends with them as the winner (unless it was already over).
-      if (this.phase !== 'match_over') this.endBrawlMatch(humansLeft[0].id);
+      if (this.phase === 'countdown') this.resetToLobby(); // nobody played: no winner
+      else if (this.phase !== 'match_over') this.endBrawlMatch(humansLeft[0].id);
       else this.checkRematch();
       this.broadcastLobby();
     } else {
@@ -1728,7 +1706,7 @@ class Game {
       const ranked = this.isRanked();
 
       if (!ranked) {
-        this.emitAll('match.over', {
+        this.emitMatchOver({
           mode: this.mode,
           ranked,
           winner: roundWinner,
@@ -1746,7 +1724,7 @@ class Game {
           updateElo(winnerName, loserName);
         }
 
-        this.emitAll('match.over', {
+        this.emitMatchOver({
           mode: this.mode,
           ranked,
           winner: roundWinner,
@@ -2230,8 +2208,8 @@ function assignSide(game: Game): number {
 
 /** A server-side bot Player for solo practice: seat 1, backed by a socket that swallows everything. */
 function createBot(game: Game): Player {
-  const noopSocket = { id: `bot-${game.id}`, on() { return this; }, emit() { return true; } } as unknown as Socket;
-  const bot = new Player(noopSocket, 'Bot ' + uniqueNamesGenerator(zombieNameConfig), 0, 0, 0, 1, 1);
+  // BotBrain swaps in its own socket; the Player only needs an id here.
+  const bot = new Player({ id: `bot-${game.id}` } as unknown as Socket, 'Bot ' + uniqueNamesGenerator(zombieNameConfig), 0, 0, 0, 1, 1);
   bot.isBot = true;
   bot.applySeat(1);
   bot.ready = true;

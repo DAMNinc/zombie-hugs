@@ -53,10 +53,6 @@ export default class Player {
     return this.mesh;
   }
 
-  getDirection(): number {
-    return this.direction;
-  }
-
   toggleMovement(keyCode: number, directionBool: boolean): void {
     switch (keyCode) {
       case 37: // Leftarrow

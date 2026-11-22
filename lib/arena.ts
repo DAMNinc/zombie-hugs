@@ -7,9 +7,9 @@ export type Axis = 'x' | 'z';
 /** Players stand on the edge lines x/z = ±SQUARE_HALF. */
 export const SQUARE_HALF = 1000;
 /** Lateral travel limit along an edge (keeps corners clear). */
-export const EDGE_TRAVEL = 800;
+const EDGE_TRAVEL = 800;
 /** A creature is out when |x| or |z| exceeds this. */
-export const BRAWL_OUT_LIMIT = 1150;
+const BRAWL_OUT_LIMIT = 1150;
 /** Walls sit this far in front of their owner. */
 export const WALL_OFFSET = 200;
 /** Hazards and normal power-ups spawn within ± this on both axes. */

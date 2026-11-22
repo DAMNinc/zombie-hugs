@@ -153,7 +153,7 @@ export function targetChipText(name: string | null | undefined): string {
 }
 
 /** Which arena the state/start payload asks for; null means "leave as is". */
-export function arenaFromState(mode: unknown, _phase?: unknown): ArenaKind | null {
+export function arenaFromState(mode: unknown): ArenaKind | null {
   if (mode === 'brawl') return 'square';
   if (mode === 'duel' || mode === 'solo') return 'lane';
   return null;
