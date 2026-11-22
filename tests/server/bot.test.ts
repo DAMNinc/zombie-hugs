@@ -30,6 +30,7 @@ function soloMatch(name: string) {
   vi.advanceTimersByTime(3000);
   game.hazards = [];
   game.lastPowerUpSpawn = Date.now() + 1e9; // no power-ups
+  game.spawnPowerUp = () => {}; // later rounds reset lastPowerUpSpawn; keep power-ups off for the whole test
   const bot = Object.values(game.players).find(p => p.isBot)!;
   return { game, human, bot };
 }
@@ -68,18 +69,18 @@ describe('solo practice bot', () => {
 
   it('respects fire delays: every shot is at least its weapon\'s delay after the previous one', () => {
     const { game, human, bot } = soloMatch('bot-b');
-    const volleys: Array<{ time: number; weapon: number }> = [];
+    const volleys: Array<{ time: number; weapon: number; rapid: boolean }> = [];
     const orig = game.emitAll.bind(game);
     game.emitAll = (event: string, ...args: any[]) => {
       if (event === 'zombie' && args[1] === bot.id && volleys.at(-1)?.time !== Date.now()) {
-        volleys.push({ time: Date.now(), weapon: args[0].weaponCode });
+        volleys.push({ time: Date.now(), weapon: args[0].weaponCode, rapid: bot.hasPowerUp('rapid_fire') });
       }
       return orig(event, ...args);
     };
     advance(human, 30000);
     expect(volleys.length).toBeGreaterThan(5);
     for (let i = 1; i < volleys.length; i++) {
-      expect(volleys[i].time - volleys[i - 1].time).toBeGreaterThanOrEqual(fireDelayFromCode(volleys[i].weapon));
+      expect(volleys[i].time - volleys[i - 1].time).toBeGreaterThanOrEqual(fireDelayFromCode(volleys[i].weapon) * (volleys[i].rapid ? 0.5 : 1));
     }
     // Variety: more than one weapon over half a minute.
     expect(new Set(volleys.map(v => v.weapon)).size).toBeGreaterThan(1);

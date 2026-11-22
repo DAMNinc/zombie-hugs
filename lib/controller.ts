@@ -184,6 +184,33 @@ const MAX_GAMES = 100;
 const MAX_GAME_NAME_LENGTH = 40;
 /** A game with no players and no spectators for this long is stopped and removed. */
 const EMPTY_GAME_TTL_MS = 60000;
+
+/**
+ * Test-only knobs: mutable copies of a few durations/limits so end-to-end tests can shorten them.
+ * Production never changes them. `resetKnobs()` restores the defaults.
+ */
+const knobs = {
+  reconnectWindowMs: RECONNECT_WINDOW_MS,
+  emptyGameTtlMs: EMPTY_GAME_TTL_MS,
+  brawlRoundMs: BRAWL_ROUND_MS,
+  countdownSeconds: COUNTDOWN_SECONDS,
+  countdownTickMs: 1000,
+  sweepIntervalMs: 5000,
+  pointsToWin: POINTS_TO_WIN,
+  roundsToWin: ROUNDS_TO_WIN,
+};
+function resetKnobs() {
+  Object.assign(knobs, {
+    reconnectWindowMs: RECONNECT_WINDOW_MS,
+    emptyGameTtlMs: EMPTY_GAME_TTL_MS,
+    brawlRoundMs: BRAWL_ROUND_MS,
+    countdownSeconds: COUNTDOWN_SECONDS,
+    countdownTickMs: 1000,
+    sweepIntervalMs: 5000,
+    pointsToWin: POINTS_TO_WIN,
+    roundsToWin: ROUNDS_TO_WIN,
+  });
+}
 const games: Record<number, Game> = {};
 
 class Game {
@@ -428,8 +455,8 @@ class Game {
 
   brawlRemainingMs(): number {
     if (this.mode !== 'brawl') return 0;
-    if (this.phase === 'playing') return Math.max(0, BRAWL_ROUND_MS - (Date.now() - this.roundStartTime));
-    if (this.phase === 'countdown' || this.phase === 'lobby') return BRAWL_ROUND_MS;
+    if (this.phase === 'playing') return Math.max(0, knobs.brawlRoundMs - (Date.now() - this.roundStartTime));
+    if (this.phase === 'countdown' || this.phase === 'lobby') return knobs.brawlRoundMs;
     return 0;
   }
 
@@ -757,7 +784,7 @@ class Game {
       return;
     }
     if (!player.connected) return;
-    logger.info('Player %s (%s) disconnected, holding seat for %sms', player.name, player.id, RECONNECT_WINDOW_MS);
+    logger.info('Player %s (%s) disconnected, holding seat for %sms', player.name, player.id, knobs.reconnectWindowMs);
     player.connected = false;
     player.left = false;
     player.right = false;
@@ -765,8 +792,8 @@ class Game {
     player.disconnectTimer = setTimeout(() => {
       player.disconnectTimer = null;
       if (this.players[player.id] === player && !player.connected) this.exitPlayer(player);
-    }, RECONNECT_WINDOW_MS);
-    this.emitAll('player.disconnected', { id: player.id, until: Date.now() + RECONNECT_WINDOW_MS });
+    }, knobs.reconnectWindowMs);
+    this.emitAll('player.disconnected', { id: player.id, until: Date.now() + knobs.reconnectWindowMs });
     this.broadcastLobby();
   }
 
@@ -1110,7 +1137,7 @@ class Game {
   startCountdown() {
     this.clearCountdown();
     this.phase = 'countdown';
-    let remaining = COUNTDOWN_SECONDS;
+    let remaining = knobs.countdownSeconds;
 
     this.emitAll('game.countdown', remaining);
     this.broadcastLobby();
@@ -1133,12 +1160,12 @@ class Game {
           mode: this.mode,
           ranked: this.isRanked(),
           arena: { kind: this.arenaKind() },
-          ...(brawl ? { roundDurationMs: BRAWL_ROUND_MS } : {}),
+          ...(brawl ? { roundDurationMs: knobs.brawlRoundMs } : {}),
         });
         this.emitStandings(true);
         this.broadcastLobby();
       }
-    }, 1000);
+    }, knobs.countdownTickMs);
   }
 
   clearCountdown() {
@@ -1672,7 +1699,7 @@ class Game {
 
     if (!roundWinner) {
       for (const id of playerIds) {
-        if (this.players[id].score >= POINTS_TO_WIN) {
+        if (this.players[id].score >= knobs.pointsToWin) {
           roundWinner = id;
           break;
         }
@@ -1696,7 +1723,7 @@ class Game {
       scores,
     });
 
-    if (this.roundWins[roundWinner] >= ROUNDS_TO_WIN) {
+    if (this.roundWins[roundWinner] >= knobs.roundsToWin) {
       this.phase = 'match_over';
       const ranked = this.isRanked();
 
@@ -1799,7 +1826,7 @@ class Game {
       setInterval(() => {
         this.checkPing();
         this.removeIfAbandoned();
-      }, 5000),
+      }, knobs.sweepIntervalMs),
     );
   }
 
@@ -1824,7 +1851,7 @@ class Game {
   removeIfAbandoned() {
     // Bots do not count as occupants.
     if (this.humans().length > 0 || Object.keys(this.spectators).length > 0) return;
-    if (Date.now() - this.lastActivity < EMPTY_GAME_TTL_MS) return;
+    if (Date.now() - this.lastActivity < knobs.emptyGameTtlMs) return;
     logger.info('Removing empty game %s', this.id);
     this.stop();
     if (games[this.id] === this) delete games[this.id];
@@ -2276,7 +2303,7 @@ function setupSocket(socket: Socket) {
   });
 }
 
-export { MAX_GAMES, MAX_GAME_NAME_LENGTH, EMPTY_GAME_TTL_MS, MAX_SEATS, RECONNECT_WINDOW_MS, SEATS, assignSide, createBot, Game, Player, Zombie, PlayerStats, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard };
+export { knobs, resetKnobs, MAX_GAMES, MAX_GAME_NAME_LENGTH, EMPTY_GAME_TTL_MS, MAX_SEATS, RECONNECT_WINDOW_MS, SEATS, assignSide, createBot, Game, Player, Zombie, PlayerStats, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard };
 
 export default {
   setupSocket,
