@@ -13,6 +13,7 @@ import HUD from './hud';
 import Audio from './audio';
 import ScreenShake from './screenshake';
 import KillFeed from './killfeed';
+import { disposeObject } from './dispose';
 import { parseLegacyJSON } from './LegacyJSONLoader';
 
 // Expose THREE and helpers globally for non-bundled scripts (gallery.js)
@@ -51,9 +52,12 @@ function updateGameState(elapsed: number): void {
     gameState.zombies[key].update(elapsed);
   }
 
-  for (const explosion of gameState.explosions) {
-    explosion.update(elapsed);
-  }
+  // Drop finished explosions: remove from the scene and free their GPU buffers.
+  gameState.explosions = gameState.explosions.filter((explosion: Explosion) => {
+    if (explosion.update(elapsed)) return true;
+    explosion.dispose();
+    return false;
+  });
 
   if (screenShake) {
     screenShake.update(elapsed);
@@ -110,6 +114,7 @@ function removeZombie(zombieId: string): void {
   const zombie = gameState.zombies[zombieId];
   if (!zombie) return;
   scene.remove(zombie.getMesh());
+  disposeObject(zombie.getMesh());
   delete gameState.zombies[zombieId];
 }
 
@@ -181,6 +186,7 @@ function setWeapon(player: Player, code: number): void {
   const currentWeaponMesh = player.getCurrentWeapon();
   if (currentWeaponMesh) {
     scene.remove(currentWeaponMesh.getMesh());
+    disposeObject(currentWeaponMesh.getMesh());
   }
   scene.add(fox.getMesh());
 
@@ -255,6 +261,7 @@ function addShieldMesh(playerId: string): void {
 function removeShieldMesh(playerId: string): void {
   if (shieldMeshes[playerId]) {
     scene.remove(shieldMeshes[playerId]);
+    disposeObject(shieldMeshes[playerId]);
     delete shieldMeshes[playerId];
   }
 }
@@ -281,6 +288,7 @@ function addPowerUpMesh(powerUp: any): void {
 function removePowerUpMesh(id: string): void {
   if (powerUpMeshes[id]) {
     scene.remove(powerUpMeshes[id]);
+    disposeObject(powerUpMeshes[id]);
     delete powerUpMeshes[id];
   }
 }
@@ -295,6 +303,7 @@ function renderHazards(hazards: any[]): void {
   // Clear old hazard meshes
   for (const mesh of hazardMeshes) {
     scene.remove(mesh);
+    disposeObject(mesh);
   }
   hazardMeshes = [];
 
@@ -328,6 +337,7 @@ function addWallMesh(wall: any): void {
 function removeWallMesh(id: string): void {
   if (wallMeshes[id]) {
     scene.remove(wallMeshes[id]);
+    disposeObject(wallMeshes[id]);
     delete wallMeshes[id];
   }
 }
@@ -335,7 +345,10 @@ function removeWallMesh(id: string): void {
 function clearArenaFeatures(): void {
   for (const id in powerUpMeshes) removePowerUpMesh(id);
   for (const id in wallMeshes) removeWallMesh(id);
-  for (const mesh of hazardMeshes) scene.remove(mesh);
+  for (const mesh of hazardMeshes) {
+    scene.remove(mesh);
+    disposeObject(mesh);
+  }
   hazardMeshes = [];
 }
 

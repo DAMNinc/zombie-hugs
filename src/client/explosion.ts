@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeObject } from './dispose';
 
 const EXPLOSION_COLORS: Record<number, number[]> = {
   0: [1.0, 1.0, 0.3],      // Default - yellow
@@ -168,12 +169,19 @@ export default class Explosion {
     this.scene.add(this.sparkCloud);
   }
 
+  /** Remove from the scene and free GPU buffers. Safe to call more than once. */
+  dispose(): void {
+    this.scene.remove(this.particle);
+    this.scene.remove(this.sparkCloud);
+    disposeObject(this.particle);
+    disposeObject(this.sparkCloud);
+  }
+
   update(elapsed: number): boolean {
     this.elapsed += elapsed;
 
     if (this.elapsed > this.duration) {
-      this.scene.remove(this.particle);
-      this.scene.remove(this.sparkCloud);
+      this.dispose();
       return false;
     }
 
