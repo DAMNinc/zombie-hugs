@@ -248,16 +248,18 @@ export default class Fox {
   private targetX: number | null = null;
   private targetZ: number | null = null;
 
-  constructor(direction: number, zombieModel: any, name?: string, weaponCode?: number) {
+  constructor(direction: number, zombieModel: any, name?: string, weaponCode?: number, health?: number, speed?: number) {
     this.offset = zombieModel.offset;
-    this.health = zombieModel.health;
+    // Server is authoritative for health; model table is only a fallback.
+    this.health = health ?? zombieModel.health;
     this.direction = direction || -1;
     this.name = name || '';
     this.weaponCode = weaponCode || 1;
     this.spawnTime = Date.now();
     this.baseX = 0;
 
-    this.speed = (weaponCode === 4) ? 200 : 300;
+    // Fallback mirrors the server's speedFromCode (horde = 200); the server-sent speed wins.
+    this.speed = speed ?? ((weaponCode === 5) ? 200 : 300);
     this.foxObj = new ROME.Animal(zombieModel.model, true);
     this.foxObj.play(this.foxObj.availableAnimals[0], this.foxObj.availableAnimals[0]);
     this.foxObj.animalA.timeScale = this.foxObj.animalB.timeScale = 0.9;

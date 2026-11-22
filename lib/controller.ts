@@ -8,6 +8,7 @@ import {
 } from 'unique-names-generator';
 import type { Socket } from 'socket.io';
 import logger from './logger';
+import { ARENA_HALF_WIDTH, ARENA_MARGIN, MAX_CHARGE_MS, clampArenaX, effectiveCharge, isFiniteNumber, validFireX, validWeaponCode } from './validate';
 
 interface Position {
   x: number;
@@ -38,6 +39,8 @@ const POWERUP_TYPES: PowerUpType[] = ['rapid_fire', 'speed_boost', 'heal', 'doub
 
 // Arena hazard constants
 const HAZARD_COUNT = 2;
+// A damage hazard's nearest edge stays at least this far from the centre lane (x = 0)
+const HAZARD_CLEAR_LANE = 60;
 
 // Sudden death constants
 const SUDDEN_DEATH_TIME_MS = 90000;
@@ -51,10 +54,8 @@ const WALL_WIDTH = 300;
 const SPECTATOR_VOTE_COOLDOWN_MS = 15000;
 
 // Synergy constants
-const SYNERGY_WINDOW_MS = 2000;
-
-// Charged shot constants
-const MAX_CHARGE_MS = 3000;
+// Must exceed the longest fire delay (horde, 3000 ms) so Stampede (horse then horde) is reachable.
+const SYNERGY_WINDOW_MS = 3500;
 
 // ELO constants
 const ELO_K = 32;
@@ -82,12 +83,6 @@ interface Wall {
   width: number;
   ownerId: string;
   expiresAt: number;
-}
-
-interface ReplayEvent {
-  time: number;
-  type: string;
-  data: any;
 }
 
 interface ActivePowerUp {
@@ -155,6 +150,10 @@ function getLeaderboard(): Array<{ name: string; elo: number }> {
 }
 
 let gameCounter = 0;
+const MAX_GAMES = 100;
+const MAX_GAME_NAME_LENGTH = 40;
+/** A game with no players and no spectators for this long is stopped and removed. */
+const EMPTY_GAME_TTL_MS = 60000;
 const games: Record<number, Game> = {};
 
 class Game {
@@ -164,7 +163,6 @@ class Game {
   players: Record<string, Player>;
   spectators: Record<string, Player>;
   zombies: Record<string, Zombie>;
-  locationModifier: number;
   timestamp: number;
   updating: boolean;
   phase: GamePhase;
@@ -176,11 +174,15 @@ class Game {
   powerUps: Record<string, PowerUp>;
   hazards: Hazard[];
   walls: Record<string, Wall>;
-  replay: ReplayEvent[];
   roundStartTime: number;
   suddenDeath: boolean;
   lastPowerUpSpawn: number;
   lastSpectatorVote: number;
+  countdownTimer: ReturnType<typeof setInterval> | null;
+  roundResetTimer: ReturnType<typeof setTimeout> | null;
+  intervals: Array<ReturnType<typeof setInterval>>;
+  /** Last time someone joined or left; a game that stays empty for EMPTY_GAME_TTL_MS is deleted. */
+  lastActivity: number;
 
   constructor(id: number, gameName?: string) {
     this.id = id;
@@ -189,7 +191,6 @@ class Game {
     this.players = {};
     this.spectators = {};
     this.zombies = {};
-    this.locationModifier = -1;
     this.timestamp = Date.now();
     this.updating = false;
     this.phase = 'lobby';
@@ -200,15 +201,14 @@ class Game {
     this.powerUps = {};
     this.hazards = [];
     this.walls = {};
-    this.replay = [];
     this.roundStartTime = 0;
     this.suddenDeath = false;
     this.lastPowerUpSpawn = 0;
     this.lastSpectatorVote = 0;
-  }
-
-  recordReplay(type: string, data: any) {
-    this.replay.push({ time: Date.now() - this.roundStartTime, type, data });
+    this.countdownTimer = null;
+    this.roundResetTimer = null;
+    this.intervals = [];
+    this.lastActivity = Date.now();
   }
 
   emitAll(...args: any[]) {
@@ -225,22 +225,34 @@ class Game {
 
   generateHazards() {
     this.hazards = [];
-    const hazardTypes: Array<'damage' | 'slow' | 'wind'> = ['damage', 'slow', 'wind'];
-    for (let i = 0; i < HAZARD_COUNT; i++) {
-      const type = hazardTypes[i % hazardTypes.length];
-      const hazard: Hazard = {
+    // Pick HAZARD_COUNT distinct types at random (Fisher-Yates on a copy).
+    const pool: Array<'damage' | 'slow' | 'wind'> = ['damage', 'slow', 'wind'];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.min(i, Math.floor(Math.random() * (i + 1)));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const limit = ARENA_HALF_WIDTH - ARENA_MARGIN;
+    for (const type of pool.slice(0, HAZARD_COUNT)) {
+      const width = 150 + Math.random() * 150;
+      const depth = 200 + Math.random() * 200;
+      let x: number;
+      if (type === 'damage') {
+        // Keep the centre lane (x = 0) clear: nearest edge at least HAZARD_CLEAR_LANE from it.
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const minX = HAZARD_CLEAR_LANE + width / 2;
+        const maxX = limit - width / 2;
+        x = side * (minX + Math.random() * (maxX - minX));
+      } else {
+        x = (Math.random() - 0.5) * 2 * (limit - width / 2);
+      }
+      this.hazards.push({
         id: crypto.randomBytes(4).toString('hex'),
-        position: {
-          x: (Math.random() - 0.5) * 600,
-          y: 0,
-          z: (Math.random() - 0.5) * 1200,
-        },
-        width: 150 + Math.random() * 150,
-        depth: 200 + Math.random() * 200,
+        position: { x, y: 0, z: (Math.random() - 0.5) * 1200 },
+        width,
+        depth,
         type,
         windDirection: type === 'wind' ? (Math.random() > 0.5 ? 1 : -1) : undefined,
-      };
-      this.hazards.push(hazard);
+      });
     }
     this.emitAll('hazards', this.hazards);
   }
@@ -257,7 +269,7 @@ class Game {
       id: crypto.randomBytes(4).toString('hex'),
       type,
       position: {
-        x: (Math.random() - 0.5) * 600,
+        x: clampArenaX((Math.random() - 0.5) * 980),
         y: 0,
         z: (Math.random() - 0.5) * 1400,
       },
@@ -265,7 +277,6 @@ class Game {
     };
     this.powerUps[powerUp.id] = powerUp;
     this.emitAll('powerup.spawn', powerUp);
-    this.recordReplay('powerup.spawn', powerUp);
   }
 
   checkPowerUpCollisions() {
@@ -278,15 +289,16 @@ class Game {
         delete this.powerUps[puId];
         continue;
       }
-      // Check player collection
-      for (const pid in this.players) {
-        const player = this.players[pid];
-        const dx = Math.abs(player.position.x - pu.position.x);
-        const dz = Math.abs(player.position.z - pu.position.z);
+      // Collected by the first creature passing through it (x/z only: flamingos fly), credited to its owner
+      for (const zid in this.zombies) {
+        const zombie = this.zombies[zid];
+        const player = this.players[zombie.firedByPlayer];
+        if (!player) continue;
+        const dx = Math.abs(zombie.position.x - pu.position.x);
+        const dz = Math.abs(zombie.position.z - pu.position.z);
         if (dx < POWERUP_COLLECT_RADIUS && dz < POWERUP_COLLECT_RADIUS) {
           this.applyPowerUp(player, pu);
-          this.emitAll('powerup.collect', puId, pid, pu.type);
-          this.recordReplay('powerup.collect', { id: puId, player: pid, type: pu.type });
+          this.emitAll('powerup.collect', puId, player.id, pu.type);
           delete this.powerUps[puId];
           break;
         }
@@ -337,7 +349,6 @@ class Game {
       }
 
       this.emitAll('sudden.death');
-      this.recordReplay('sudden.death', {});
     }
   }
 
@@ -355,25 +366,21 @@ class Game {
     if (weaponCode === 3 && recentCodes.includes(1)) {
       speedMult = 1.5;
       this.emitAll('synergy', player.id, 'air_strike');
-      this.recordReplay('synergy', { player: player.id, type: 'air_strike' });
     }
     // Horse + Horde = "Stampede" — extra horde creatures
     if (weaponCode === 5 && recentCodes.includes(2)) {
       extraCreatures = 3;
       this.emitAll('synergy', player.id, 'stampede');
-      this.recordReplay('synergy', { player: player.id, type: 'stampede' });
     }
     // Zombie + Horse = "Juggernaut" — extra HP
     if (weaponCode === 2 && recentCodes.includes(4)) {
       healthBonus = 2;
       this.emitAll('synergy', player.id, 'juggernaut');
-      this.recordReplay('synergy', { player: player.id, type: 'juggernaut' });
     }
     // Fox + Fox = "Twin Strike" — fires 2 foxes
     if (weaponCode === 1 && recentCodes.filter(c => c === 1).length >= 2) {
       extraCreatures = 1;
       this.emitAll('synergy', player.id, 'twin_strike');
-      this.recordReplay('synergy', { player: player.id, type: 'twin_strike' });
     }
 
     return { speedMult, healthBonus, extraCreatures };
@@ -386,10 +393,20 @@ class Game {
     }
 
     logger.info('%s joined game %s as player', player.name, this.id);
+    this.lastActivity = Date.now();
 
     this.players[player.id] = player;
     this.roundWins[player.id] = 0;
     this.stats[player.id] = new PlayerStats();
+
+    // Game handlers only act while this exact Player is still in the game, so a socket that has
+    // exited (exit, disconnect, ping kick) can no longer fire, place walls and so on.
+    const onPlayer = (event: string, handler: (...args: any[]) => void) => {
+      player.socket.on(event, (...args: any[]) => {
+        if (this.players[player.id] !== player) return;
+        handler(...args);
+      });
+    };
 
     for (const key in this.players) {
       if (this.players[key] !== player) {
@@ -398,14 +415,25 @@ class Game {
       }
     }
 
-    player.socket.on('fire', (position: Position, weaponCode: number, chargeTime?: number) => {
+    onPlayer('fire', (clientPosition: Position, clientWeaponCode: number, clientChargeTime?: number) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
+
+      const weaponCode = validWeaponCode(clientWeaponCode);
+      const spawnX = validFireX(clientPosition, player.position.x);
+      if (weaponCode === null || spawnX === null || (clientChargeTime !== undefined && !isFiniteNumber(clientChargeTime))) {
+        logger.debug('Dropped invalid fire from %s', player.id);
+        return;
+      }
+      // Server-authoritative spawn: z and y come from the server's player, x is the clamped client x.
+      const position: Position = { x: spawnX, y: player.position.y, z: player.position.z };
 
       // Fire rate check (server-authoritative)
       const now = Date.now();
       let delay = fireDelayFromCode(weaponCode);
       if (player.hasPowerUp('rapid_fire')) delay *= 0.5;
       if (now - player.lastFireTime < delay) return;
+      // A player cannot have charged longer than since their last shot.
+      const charge = effectiveCharge(clientChargeTime, now - player.lastFireTime) ?? 0;
       player.lastFireTime = now;
 
       logger.verbose('A zombie was added in game %s', this.id, position);
@@ -417,7 +445,6 @@ class Game {
       let speed = upgradeLevel >= 1 ? baseSpeed + 50 : baseSpeed;
 
       // Charged shot bonus
-      const charge = Math.min(chargeTime || 0, MAX_CHARGE_MS);
       const chargeRatio = charge / MAX_CHARGE_MS;
       if (chargeRatio > 0.3) {
         speed += Math.round(chargeRatio * 100);
@@ -449,7 +476,6 @@ class Game {
         const zombie = new Zombie(zombieName, pos, player.direction * -1, player.id, hp, weaponCode, spd, chargeRatio);
         this.zombies[zombie.id] = zombie;
         this.emitAll('zombie', zombie.toJSON(), player.id);
-        this.recordReplay('zombie', { zombie: zombie.toJSON(), player: player.id });
       };
 
       if (weaponCode === 5) {
@@ -471,23 +497,30 @@ class Game {
       }
     });
 
-    player.socket.on('move.start', (keyCode: number) => {
+    onPlayer('move.start', (keyCode: number) => {
+      if (!isFiniteNumber(keyCode)) return;
       player.toggleMovement(keyCode, true);
       this.emitAll('move.start', keyCode, player.id);
     });
 
-    player.socket.on('move.end', (keyCode: number) => {
+    onPlayer('move.end', (keyCode: number) => {
+      if (!isFiniteNumber(keyCode)) return;
       player.toggleMovement(keyCode, false);
       this.emitAll('move.end', keyCode, player.id);
     });
 
-    player.socket.on('weapon.set', (code: number) => {
+    onPlayer('weapon.set', (clientCode: number) => {
+      const code = validWeaponCode(clientCode);
+      if (code === null) {
+        logger.debug('Dropped invalid weapon.set from %s', player.id);
+        return;
+      }
       logger.debug('Player ' + player.id + ' switch to ' + code);
       player.setWeaponCode(code);
       this.emitAll('weapon.set', code, player.id);
     });
 
-    player.socket.on('shield', () => {
+    onPlayer('shield', () => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
       const now = Date.now();
       if (player.shield.active) return;
@@ -497,12 +530,16 @@ class Game {
       player.shield.expiresAt = now + SHIELD_DURATION_MS;
       player.shield.cooldownUntil = now + SHIELD_COOLDOWN_MS;
       this.emitAll('shield.activate', player.id);
-      this.recordReplay('shield.activate', { player: player.id });
     });
 
     // Wall placement
-    player.socket.on('place.wall', (x: number) => {
+    onPlayer('place.wall', (clientX: number) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
+      if (!isFiniteNumber(clientX)) {
+        logger.debug('Dropped invalid place.wall from %s', player.id);
+        return;
+      }
+      const x = clampArenaX(clientX);
       if (player.score < WALL_COST) return;
 
       player.score -= WALL_COST;
@@ -516,27 +553,30 @@ class Game {
       };
       this.walls[wall.id] = wall;
       this.emitAll('wall.place', wall);
-      this.recordReplay('wall.place', wall);
     });
 
-    player.socket.on('ready', () => {
+    onPlayer('ready', () => {
       player.ready = true;
       this.checkReady();
     });
 
-    player.socket.on('rematch', () => {
+    onPlayer('rematch', () => {
       player.wantsRematch = true;
       this.checkRematch();
     });
 
-    player.socket.on('exit', () => {
+    onPlayer('exit', () => {
       this.exitPlayer(player);
     });
 
-    player.socket.on('pingpong', () => {
+    onPlayer('pingpong', () => {
       logger.debug(`Ping from ${player.name} (${player.id})`);
       player.lastPing = Date.now();
       player.socket.emit('pong');
+    });
+
+    player.socket.on('disconnect', () => {
+      this.exitPlayer(player);
     });
 
     // Send ELO info
@@ -545,7 +585,8 @@ class Game {
 
   checkReady() {
     const playerIds = Object.keys(this.players);
-    if (playerIds.length < 1) return;
+    // A match needs an opponent: never start with a lone player.
+    if (playerIds.length < 2) return;
     if (this.phase !== 'lobby' && this.phase !== 'round_over') return;
 
     const allReady = playerIds.every(id => this.players[id].ready);
@@ -555,27 +596,60 @@ class Game {
   }
 
   startCountdown() {
+    this.clearCountdown();
     this.phase = 'countdown';
     let remaining = COUNTDOWN_SECONDS;
 
     this.emitAll('game.countdown', remaining);
 
-    const countdownInterval = setInterval(() => {
+    this.countdownTimer = setInterval(() => {
       remaining--;
       if (remaining > 0) {
         this.emitAll('game.countdown', remaining);
       } else {
-        clearInterval(countdownInterval);
+        this.clearCountdown();
         this.phase = 'playing';
         this.roundStartTime = Date.now();
         this.suddenDeath = false;
         this.lastPowerUpSpawn = 0;
-        this.replay = [];
         this.generateHazards();
         this.emitAll('game.start');
-        this.recordReplay('game.start', {});
       }
     }, 1000);
+  }
+
+  clearCountdown() {
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
+  }
+
+  /** Back to a fresh lobby for whoever is still here (used when a game drops below 2 players). */
+  resetToLobby() {
+    this.clearCountdown();
+    if (this.roundResetTimer) {
+      clearTimeout(this.roundResetTimer);
+      this.roundResetTimer = null;
+    }
+    this.phase = 'lobby';
+    this.round = 1;
+    this.zombies = {};
+    this.powerUps = {};
+    this.walls = {};
+    this.hazards = [];
+    this.suddenDeath = false;
+    this.roundWins = {};
+    this.stats = {};
+    for (const id in this.players) {
+      this.roundWins[id] = 0;
+      this.stats[id] = new PlayerStats();
+      this.players[id].resetForRound();
+      this.players[id].wantsRematch = false;
+      // The client only sends 'ready' once after joining, so stay ready: a newcomer's ready starts the match.
+      this.players[id].ready = true;
+    }
+    this.emitAll('game.reset');
   }
 
   checkRematch() {
@@ -622,10 +696,16 @@ class Game {
   }
 
   exitPlayer(player: Player) {
+    if (this.players[player.id] !== player) return;
     logger.info(`Player ${player.name} (${player.id}) exited`);
     this.emitAll('player.exit', player.id);
     delete this.players[player.id];
-    this.locationModifier *= -1;
+    delete this.roundWins[player.id];
+    delete this.stats[player.id];
+    this.lastActivity = Date.now();
+    if (this.phase !== 'lobby' && Object.keys(this.players).length < 2) {
+      this.resetToLobby();
+    }
     if (Object.keys(this.players).length === 0) {
       logger.info(`No more players in ${this.id}!`);
     }
@@ -639,15 +719,26 @@ class Game {
     }
 
     this.spectators[spectator.id] = spectator;
+    this.lastActivity = Date.now();
+    const onSpectator = (event: string, handler: (...args: any[]) => void) => {
+      spectator.socket.on(event, (...args: any[]) => {
+        if (this.spectators[spectator.id] !== spectator) return;
+        handler(...args);
+      });
+    };
+    spectator.socket.on('disconnect', () => {
+      delete this.spectators[spectator.id];
+      this.lastActivity = Date.now();
+    });
     this.emitAll('spectator', spectator.toJSON());
 
-    spectator.socket.on('pingpong', () => {
+    onSpectator('pingpong', () => {
       spectator.lastPing = Date.now();
       spectator.socket.emit('pong');
     });
 
     // Spectator interference voting
-    spectator.socket.on('spectator.vote', (eventType: string) => {
+    onSpectator('spectator.vote', (eventType: string) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
       const now = Date.now();
       if (now - this.lastSpectatorVote < SPECTATOR_VOTE_COOLDOWN_MS) return;
@@ -660,7 +751,6 @@ class Game {
             this.zombies[key].speed *= 1.5;
           }
           this.emitAll('spectator.event', 'speed_burst', spectator.name);
-          this.recordReplay('spectator.event', { type: 'speed_burst' });
           break;
         }
         case 'spawn_obstacle': {
@@ -675,7 +765,6 @@ class Game {
           this.walls[wall.id] = wall;
           this.emitAll('wall.place', wall);
           this.emitAll('spectator.event', 'spawn_obstacle', spectator.name);
-          this.recordReplay('spectator.event', { type: 'spawn_obstacle' });
           break;
         }
         case 'heal_all': {
@@ -684,7 +773,6 @@ class Game {
             this.emitAll('player.heal', pid, this.players[pid].hp);
           }
           this.emitAll('spectator.event', 'heal_all', spectator.name);
-          this.recordReplay('spectator.event', { type: 'heal_all' });
           break;
         }
       }
@@ -702,6 +790,16 @@ class Game {
     if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
 
     this.updating = true;
+    try {
+      this.runUpdate(elapsed);
+    } catch (err) {
+      logger.error('Error in game %s update: %s', this.id, err instanceof Error ? (err.stack || err.message) : String(err));
+    } finally {
+      this.updating = false;
+    }
+  }
+
+  private runUpdate(elapsed: number) {
     const now = Date.now();
 
     // Spawn power-ups
@@ -748,10 +846,10 @@ class Game {
         if (hx < hazard.width / 2 && hz < hazard.depth / 2) {
           switch (hazard.type) {
             case 'damage':
-              // Tick damage — reduce health slowly
-              if (!zombie.lastHazardDamage || now - zombie.lastHazardDamage > 500) {
+              // One hit per creature per damage hazard, however long it stays inside
+              if (!zombie.hazardsHit.has(hazard.id)) {
+                zombie.hazardsHit.add(hazard.id);
                 zombie.health -= 1;
-                zombie.lastHazardDamage = now;
                 if (zombie.health <= 0) {
                   this.emitAll('zombie.hazard', zombie.id, hazard.id);
                   delete this.zombies[key];
@@ -779,7 +877,6 @@ class Game {
         const wx = Math.abs(zombie.position.x - wall.position.x);
         if (wz < 50 && wx < wall.width / 2) {
           this.emitAll('zombie.walled', zombie.id, wId);
-          this.recordReplay('zombie.walled', { zombie: zombie.id, wall: wId });
           delete this.zombies[key];
           wallBlocked = true;
           break;
@@ -799,7 +896,6 @@ class Game {
         const xDist = Math.abs(zombie.position.x - player.position.x);
         if (zDist < 150 && xDist < 300) {
           this.emitAll('zombie.shielded', zombie.id, pid);
-          this.recordReplay('zombie.shielded', { zombie: zombie.id, player: pid });
           delete this.zombies[key];
           shieldDestroyed = true;
           break;
@@ -851,7 +947,6 @@ class Game {
         }
 
         this.emitAll('zombie.out-of-bounds', zombie.id, zombie.firedByPlayer);
-        this.recordReplay('zombie.out-of-bounds', { zombie: zombie.id, player: zombie.firedByPlayer });
         delete this.zombies[key];
 
         if (this.checkRoundEnd()) break;
@@ -866,13 +961,15 @@ class Game {
 
         if (zombie.isCollision(otherZombie)) {
           this.emitAll('zombie.collision', zombie.id, otherZombie.id);
-          this.recordReplay('zombie.collision', { a: zombie.id, b: otherZombie.id });
-
-          if (this.stats[zombie.firedByPlayer]) this.stats[zombie.firedByPlayer].zombiesDestroyed++;
-          if (this.stats[otherZombie.firedByPlayer]) this.stats[otherZombie.firedByPlayer].zombiesDestroyed++;
 
           this.zombies[key].health -= 1;
           this.zombies[otherKey].health -= 1;
+
+          // Credit each kill to the owner of the creature that landed the hit.
+          if (zombie.firedByPlayer !== otherZombie.firedByPlayer) {
+            if (this.zombies[key].health <= 0 && this.stats[otherZombie.firedByPlayer]) this.stats[otherZombie.firedByPlayer].zombiesDestroyed++;
+            if (this.zombies[otherKey].health <= 0 && this.stats[zombie.firedByPlayer]) this.stats[zombie.firedByPlayer].zombiesDestroyed++;
+          }
 
           // Creature ability on kill: surviving creature gets a buff
           if (this.zombies[key].health <= 0 && this.zombies[otherKey].health > 0) {
@@ -897,8 +994,6 @@ class Game {
         }
       }
     }
-
-    this.updating = false;
   }
 
   checkRoundEnd(): boolean {
@@ -956,7 +1051,6 @@ class Game {
         loser: roundLoser,
         roundWins: this.roundWins,
         stats: this.stats,
-        replay: this.replay,
         elo: {
           [roundWinner]: getElo(winnerName),
           [roundLoser]: getElo(loserName),
@@ -967,7 +1061,8 @@ class Game {
       this.phase = 'round_over';
       this.round++;
 
-      setTimeout(() => {
+      this.roundResetTimer = setTimeout(() => {
+        this.roundResetTimer = null;
         if (this.phase === 'round_over') {
           this.resetForNextRound();
           this.emitAll('round.reset');
@@ -1009,17 +1104,39 @@ class Game {
   }
 
   start() {
-    setInterval(() => {
-      this.emitAll('state', this.toJSON());
-    }, 200);
+    this.stop();
+    this.intervals.push(
+      setInterval(() => {
+        this.emitAll('state', this.toJSON());
+      }, 200),
+      setInterval(() => {
+        this.update(this.elapsed());
+      }, 100),
+      setInterval(() => {
+        this.checkPing();
+        this.removeIfAbandoned();
+      }, 5000),
+    );
+  }
 
-    setInterval(() => {
-      this.update(this.elapsed());
-    }, 100);
+  /** Clears every timer the game owns. Safe to call more than once. */
+  stop() {
+    for (const handle of this.intervals) clearInterval(handle);
+    this.intervals = [];
+    this.clearCountdown();
+    if (this.roundResetTimer) {
+      clearTimeout(this.roundResetTimer);
+      this.roundResetTimer = null;
+    }
+  }
 
-    setInterval(() => {
-      this.checkPing();
-    }, 5000);
+  /** Stops and deletes the game once it has had nobody in it for EMPTY_GAME_TTL_MS. */
+  removeIfAbandoned() {
+    if (Object.keys(this.players).length > 0 || Object.keys(this.spectators).length > 0) return;
+    if (Date.now() - this.lastActivity < EMPTY_GAME_TTL_MS) return;
+    logger.info('Removing empty game %s', this.id);
+    this.stop();
+    if (games[this.id] === this) delete games[this.id];
   }
 
   checkPing() {
@@ -1157,7 +1274,7 @@ class Player {
       curPosX += tr * elapsed * this.direction;
     }
 
-    this.position.x = curPosX;
+    this.position.x = clampArenaX(curPosX);
   }
 
   toggleMovement(keyCode: number, directionBool: boolean) {
@@ -1187,7 +1304,7 @@ class Zombie {
   weaponCode: number;
   spawnTime: number;
   baseX: number;
-  lastHazardDamage: number;
+  hazardsHit: Set<string>;
   chargeRatio: number;
 
   constructor(
@@ -1210,7 +1327,7 @@ class Zombie {
     this.weaponCode = weaponCode;
     this.spawnTime = Date.now();
     this.baseX = position.x;
-    this.lastHazardDamage = 0;
+    this.hazardsHit = new Set();
     this.chargeRatio = chargeRatio;
   }
 
@@ -1249,35 +1366,73 @@ class Zombie {
   }
 }
 
-function createGame(gameName?: string): number {
+/** Returns the new game's id, or null when MAX_GAMES live games already exist. */
+function createGame(gameName?: string): number | null {
+  if (Object.keys(games).length >= MAX_GAMES) return null;
+  const name = typeof gameName === 'string' ? gameName.trim().slice(0, MAX_GAME_NAME_LENGTH).trim() : '';
   const gameId = gameCounter++;
-  games[gameId] = new Game(gameId, gameName);
+  games[gameId] = new Game(gameId, name || undefined);
   games[gameId].start();
   return gameId;
 }
 
-function listenForJoin(socket: Socket) {
-  socket.on('join.player', (data: { gameId: number }) => {
-    const game = games[data.gameId];
-    const playerName = uniqueNamesGenerator(playerNameConfig);
-    const player = new Player(
-      socket,
-      playerName,
-      0,
-      0,
-      1000 * game.locationModifier,
-      game.locationModifier,
-      1,
-    );
+/**
+ * Picks the side (-1 or 1) for a joining player: the one no present player holds.
+ * An empty game gives -1, which is the first side a fresh game has always used.
+ */
+function assignSide(game: Game): number {
+  const taken = Object.values(game.players).map(p => p.direction);
+  return taken.includes(-1) ? 1 : -1;
+}
 
-    game.locationModifier *= -1;
+function findGame(data: unknown): Game | undefined {
+  const gameId = (data as { gameId?: unknown } | null | undefined)?.gameId;
+  if (typeof gameId !== 'number' || !Number.isInteger(gameId)) return undefined;
+  return Object.prototype.hasOwnProperty.call(games, gameId) ? games[gameId] : undefined;
+}
+
+function listenForJoin(socket: Socket) {
+  let joined = false;
+
+  socket.on('join.player', (data: { gameId: number }) => {
+    if (joined) {
+      logger.info('Socket %s already joined a game, ignoring join.player', socket.id);
+      return;
+    }
+    const game = findGame(data);
+    if (!game) {
+      logger.warn('Socket %s tried to join unknown game', socket.id);
+      socket.emit('join.error.notfound');
+      return;
+    }
+    if (Object.keys(game.players).length >= 2) {
+      logger.info('Game %s is full, rejecting player join from %s', game.id, socket.id);
+      socket.emit('join.error.full');
+      return;
+    }
+
+    joined = true;
+    const side = assignSide(game);
+    const playerName = uniqueNamesGenerator(playerNameConfig);
+    const player = new Player(socket, playerName, 0, 0, 1000 * side, side, 1);
 
     player.sendPlayerInfo();
     game.joinPlayer(player);
   });
 
   socket.on('join.spectator', (data: { gameId: number }) => {
-    const game = games[data.gameId];
+    if (joined) {
+      logger.info('Socket %s already joined a game, ignoring join.spectator', socket.id);
+      return;
+    }
+    const game = findGame(data);
+    if (!game) {
+      logger.warn('Socket %s tried to spectate unknown game', socket.id);
+      socket.emit('join.error.notfound');
+      return;
+    }
+
+    joined = true;
     const spectatorName = uniqueNamesGenerator(playerNameConfig);
     const player = new Player(socket, spectatorName, 0, 0, 0, 0);
     game.joinSpectator(player);
@@ -1292,6 +1447,8 @@ function setupSocket(socket: Socket) {
     logger.error(err);
   });
 }
+
+export { MAX_GAMES, MAX_GAME_NAME_LENGTH, EMPTY_GAME_TTL_MS, assignSide, Game, Player, Zombie, PlayerStats, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard };
 
 export default {
   setupSocket,

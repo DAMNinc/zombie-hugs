@@ -1,13 +1,35 @@
 import Constants from './constants';
 
+const HINT_KEY = 'zombieHugsControlsHintSeen';
+
+// Trait text is the matchup legend (see Zombie.isCollision in lib/controller.ts).
+const WEAPON_INFO = [
+  { code: 1, name: 'Fox', color: '#ff6600', trait: 'zigzags, so it is hard to intercept (1 HP)' },
+  { code: 2, name: 'Horse', color: '#aa8833', trait: 'survives one collision and pushes through (2 HP)' },
+  { code: 3, name: 'Flamingo', color: '#ff69b4', trait: 'flies — only flamingos can stop it; fastest reload' },
+  { code: 4, name: 'Zombie', color: '#33ff33', trait: 'tanks multiple collisions (3 HP); fire before Horse for Juggernaut' },
+  { code: 5, name: 'Horde', color: '#9933ff', trait: 'fires a pack of 5 small creatures; slowest reload' },
+];
+
 export default class HUD {
+  private mobileBar: HTMLDivElement | null = null;
+  private mobileSlots: Record<string, HTMLButtonElement> = {};
+  private mobileShield: HTMLButtonElement | null = null;
+  private mobileWall: HTMLButtonElement | null = null;
+  private myScore = 0;
+  private weaponBar: HTMLDivElement | null = null;
+  private weaponSlots: Record<string, HTMLButtonElement> = {};
   private container: HTMLDivElement;
   private hpBar: HTMLDivElement;
   private hpText: HTMLSpanElement;
+  private damageFlash: HTMLDivElement | null = null;
   private scoreText: HTMLSpanElement;
   private opponentScoreText: HTMLSpanElement;
   private opponentHpBar: HTMLDivElement;
   private countdownOverlay: HTMLDivElement;
+  private waitingOverlay: HTMLDivElement | null = null;
+  private waitingTitle: HTMLDivElement | null = null;
+  private waitingLink: HTMLInputElement | null = null;
   private gameOverOverlay: HTMLDivElement;
   private roundIndicator: HTMLDivElement;
   private comboText: HTMLDivElement;
@@ -16,6 +38,7 @@ export default class HUD {
   private pingDisplay: HTMLDivElement;
   private latencyMs: number = 0;
   private isSpectator: boolean;
+  private controlsHint: HTMLDivElement | null = null;
 
   // New feature elements
   private powerUpIndicator: HTMLDivElement;
@@ -50,6 +73,7 @@ export default class HUD {
       width: 100%; height: 100%; background: #4caf50;
       transition: width 0.3s; border-radius: 2px;
     `;
+    hpContainer.className = 'hud-lift';
     hpContainer.appendChild(this.hpBar);
     this.hpText = document.createElement('span');
     this.hpText.style.cssText = `
@@ -74,12 +98,14 @@ export default class HUD {
     const myScoreSection = document.createElement('div');
     myScoreSection.innerHTML = '<span style="color:#4caf50">YOU</span>';
     this.scoreText = document.createElement('span');
+    this.scoreText.className = 'hud-score-num';
     this.scoreText.style.cssText = 'font-size: 24px; font-weight: bold; margin-left: 8px;';
     this.scoreText.textContent = '0';
     myScoreSection.appendChild(this.scoreText);
     opponentContainer.appendChild(myScoreSection);
 
     this.roundIndicator = document.createElement('div');
+    this.roundIndicator.className = 'hud-round';
     this.roundIndicator.style.cssText = 'color: #aaa; font-size: 12px; text-align: center;';
     this.roundIndicator.textContent = 'Round 1';
     opponentContainer.appendChild(this.roundIndicator);
@@ -87,6 +113,7 @@ export default class HUD {
     const oppScoreSection = document.createElement('div');
     oppScoreSection.innerHTML = '<span style="color:#f44336">OPP</span>';
     this.opponentScoreText = document.createElement('span');
+    this.opponentScoreText.className = 'hud-score-num';
     this.opponentScoreText.style.cssText = 'font-size: 24px; font-weight: bold; margin-left: 8px;';
     this.opponentScoreText.textContent = '0';
     oppScoreSection.appendChild(this.opponentScoreText);
@@ -96,6 +123,7 @@ export default class HUD {
 
     // HP mini bars
     const oppHpContainer = document.createElement('div');
+    oppHpContainer.className = 'hud-hp-mini';
     oppHpContainer.style.cssText = `
       position: fixed; top: 50px; left: 50%; transform: translateX(-50%);
       width: 300px; height: 8px; display: flex; gap: 4px;
@@ -166,6 +194,7 @@ export default class HUD {
     `;
     shieldLabel.textContent = 'SHIELD [Q]';
     this.shieldCooldown.appendChild(shieldLabel);
+    this.shieldCooldown.className = 'hud-lift';
     this.container.appendChild(this.shieldCooldown);
 
     // Upgrade indicator
@@ -174,6 +203,7 @@ export default class HUD {
       position: fixed; bottom: 75px; left: 10px;
       color: #ff0; font-size: 12px; display: none;
     `;
+    this.upgradeIndicator.className = 'hud-lift';
     this.container.appendChild(this.upgradeIndicator);
 
     // Ping display
@@ -182,6 +212,7 @@ export default class HUD {
       position: fixed; bottom: 5px; right: 5px;
       color: #888; font-size: 11px; font-family: monospace;
     `;
+    this.pingDisplay.className = 'hud-desktop-only';
     this.container.appendChild(this.pingDisplay);
 
     // === NEW FEATURE HUD ELEMENTS ===
@@ -192,6 +223,7 @@ export default class HUD {
       position: fixed; bottom: 95px; left: 10px;
       font-size: 12px; display: none;
     `;
+    this.powerUpIndicator.className = 'hud-lift';
     this.container.appendChild(this.powerUpIndicator);
 
     // Charge bar (bottom-center)
@@ -210,6 +242,7 @@ export default class HUD {
     chargeLabel.style.cssText = 'position: absolute; top: -14px; left: 0; font-size: 10px; color: #aaa;';
     chargeLabel.textContent = 'CHARGE [HOLD]';
     this.chargeBar.appendChild(chargeLabel);
+    this.chargeBar.className = 'hud-charge';
     this.container.appendChild(this.chargeBar);
 
     // Synergy text (center, slightly below combo)
@@ -248,6 +281,7 @@ export default class HUD {
       color: #888; font-size: 11px; font-family: monospace;
       display: none;
     `;
+    this.eloDisplay.className = 'hud-desktop-only';
     this.container.appendChild(this.eloDisplay);
 
     // Camera mode indicator (bottom-right, above ping)
@@ -257,6 +291,7 @@ export default class HUD {
       color: #888; font-size: 11px; font-family: monospace;
     `;
     this.cameraModeIndicator.textContent = '1ST PERSON [V]';
+    this.cameraModeIndicator.className = 'hud-desktop-only';
     this.container.appendChild(this.cameraModeIndicator);
 
     // Spectator vote panel (only for spectators)
@@ -303,12 +338,36 @@ export default class HUD {
     return this.spectatorPanel;
   }
 
+  /** Red edge flash plus a pulse on the HP bar (CSS animations; retriggered on every hit). */
+  flashDamage(): void {
+    const retrigger = (el: HTMLElement | null, cls: string) => {
+      if (!el) return;
+      el.classList.remove(cls);
+      void el.offsetWidth; // restart the animation
+      el.classList.add(cls);
+    };
+    if (!this.damageFlash) {
+      this.damageFlash = document.createElement('div');
+      this.damageFlash.className = 'hud-damage-flash';
+      this.container.appendChild(this.damageFlash);
+    }
+    retrigger(this.damageFlash, 'active');
+    retrigger(this.hpBar.parentElement, 'hud-hp-pulse');
+  }
+
+  /** Floating "+N" that rises and fades below the score display. Smaller and red for the opponent. */
+  floatScore(points: number, mine: boolean): void {
+    const el = document.createElement('div');
+    el.className = 'hud-score-float ' + (mine ? 'mine' : 'opp');
+    el.textContent = `+${points}`;
+    el.addEventListener('animationend', () => el.remove());
+    this.container.appendChild(el);
+  }
+
   updateScore(myScore: number, opponentScore: number): void {
+    this.myScore = myScore;
     this.scoreText.textContent = String(myScore);
     this.opponentScoreText.textContent = String(opponentScore);
-
-    const oldScore = document.getElementById('score');
-    if (oldScore) oldScore.innerHTML = String(myScore);
   }
 
   updateHP(myHp: number, opponentHp: number): void {
@@ -328,7 +387,83 @@ export default class HUD {
     }
   }
 
+  /** Lobby overlay for a lone player: waiting for an opponent, or the opponent just left. Never shown to spectators. */
+  showWaiting(opponentLeft: boolean = false): void {
+    if (this.isSpectator) return;
+    if (!this.waitingOverlay) {
+      const overlay = document.createElement('div');
+      overlay.id = 'waiting-overlay';
+      overlay.style.cssText = `
+        position: fixed; top: 22%; left: 50%; transform: translateX(-50%);
+        width: min(440px, calc(100% - 24px)); box-sizing: border-box;
+        display: flex; flex-direction: column; align-items: center; gap: 12px;
+        background: rgba(0,0,0,0.75); border: 2px solid #555; border-radius: 8px;
+        padding: 16px; color: #fff; text-align: center; pointer-events: auto;
+      `;
+      const title = document.createElement('div');
+      title.style.cssText = 'font-size: 20px; font-weight: bold; color: #ffcc00; text-shadow: 1px 1px 2px #000;';
+      const hint = document.createElement('div');
+      hint.style.cssText = 'font-size: 13px; color: #ccc;';
+      hint.textContent = 'Share this link with a friend to start:';
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; gap: 8px; width: 100%;';
+      const link = document.createElement('input');
+      link.type = 'text';
+      link.readOnly = true;
+      link.style.cssText = `
+        flex: 1; min-width: 0; padding: 10px 8px; font: 13px monospace; color: #fff;
+        background: #222; border: 1px solid #555; border-radius: 4px;
+      `;
+      link.addEventListener('focus', () => link.select());
+      const btn = document.createElement('button');
+      btn.textContent = 'Copy link';
+      btn.style.cssText = `
+        padding: 10px 14px; font: bold 13px monospace; color: #fff; cursor: pointer;
+        background: #4caf50; border: none; border-radius: 4px; min-height: 44px;
+      `;
+      btn.addEventListener('click', () => {
+        const done = () => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
+        };
+        const fallback = () => {
+          link.focus();
+          link.select();
+          link.setSelectionRange(0, link.value.length);
+          try { if (document.execCommand('copy')) done(); } catch (_e) { /* text stays selected */ }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(link.value).then(done, fallback);
+        } else {
+          fallback();
+        }
+      });
+      row.appendChild(link);
+      row.appendChild(btn);
+      overlay.appendChild(title);
+      overlay.appendChild(hint);
+      overlay.appendChild(row);
+      this.container.appendChild(overlay);
+      this.waitingOverlay = overlay;
+      this.waitingTitle = title;
+      this.waitingLink = link;
+    }
+    this.waitingTitle!.textContent = opponentLeft
+      ? 'Opponent left \u2014 waiting for a new opponent'
+      : 'Waiting for an opponent\u2026';
+    this.waitingLink!.value = window.location.href;
+    this.waitingOverlay.style.display = 'flex';
+    this.syncControlsHint();
+    this.hideCountdown();
+  }
+
+  hideWaiting(): void {
+    if (this.waitingOverlay) this.waitingOverlay.style.display = 'none';
+    this.syncControlsHint();
+  }
+
   showCountdown(seconds: number): void {
+    this.hideWaiting();
     this.countdownOverlay.style.display = 'flex';
     this.countdownOverlay.textContent = String(seconds);
   }
@@ -343,8 +478,11 @@ export default class HUD {
     setTimeout(() => this.hideCountdown(), 800);
   }
 
+  private roundEndTimer: ReturnType<typeof setTimeout> | null = null;
+
   showRoundEnd(winnerName: string, round: number, iWon: boolean): void {
     this.gameOverOverlay.style.display = 'flex';
+    this.syncControlsHint();
     this.gameOverOverlay.innerHTML = `
       <div style="font-size: 36px; color: ${iWon ? '#4caf50' : '#f44336'};">
         ${iWon ? 'ROUND WON!' : 'ROUND LOST'}
@@ -356,12 +494,16 @@ export default class HUD {
         Next round starting...
       </div>
     `;
-    setTimeout(() => {
+    if (this.roundEndTimer) clearTimeout(this.roundEndTimer);
+    this.roundEndTimer = setTimeout(() => {
+      this.roundEndTimer = null;
       this.gameOverOverlay.style.display = 'none';
+      this.syncControlsHint();
     }, 2500);
   }
 
   showMatchOver(winnerName: string, iWon: boolean, roundWins: Record<string, number>, stats: Record<string, any>, myId: string, opponentId: string, elo?: Record<string, number>, leaderboard?: Array<{ name: string; elo: number }>): void {
+    this.cancelRoundEndTimer();
     const myStats = stats[myId] || {};
     const oppStats = stats[opponentId] || {};
     const myElo = elo?.[myId] || '';
@@ -382,6 +524,7 @@ export default class HUD {
     }
 
     this.gameOverOverlay.style.display = 'flex';
+    this.syncControlsHint();
     this.gameOverOverlay.innerHTML = `
       <div style="font-size: 64px; color: ${iWon ? '#4caf50' : '#f44336'}; margin-bottom: 20px;">
         ${iWon ? 'VICTORY!' : 'DEFEAT'}
@@ -408,18 +551,22 @@ export default class HUD {
           background: #4caf50; color: #fff; border: none; border-radius: 5px;
           cursor: pointer; pointer-events: auto;
         ">REMATCH</button>
-        <button id="replay-btn" style="
-          padding: 12px 30px; font-size: 16px;
-          background: #2196f3; color: #fff; border: none; border-radius: 5px;
-          cursor: pointer; pointer-events: auto;
-        ">WATCH REPLAY</button>
       </div>
       <div id="rematch-status" style="font-size: 14px; color: #888; margin-top: 10px;"></div>
     `;
   }
 
+  private cancelRoundEndTimer(): void {
+    if (this.roundEndTimer) {
+      clearTimeout(this.roundEndTimer);
+      this.roundEndTimer = null;
+    }
+  }
+
   hideMatchOver(): void {
+    this.cancelRoundEndTimer();
     this.gameOverOverlay.style.display = 'none';
+    this.syncControlsHint();
   }
 
   showCombo(count: number): void {
@@ -445,6 +592,14 @@ export default class HUD {
     const stars = '\u2605'.repeat(level);
     this.upgradeIndicator.textContent = `UPGRADE ${stars}`;
     this.upgradeIndicator.style.color = level >= 2 ? '#ff4444' : '#ff0';
+  }
+
+  hideUpgrade(): void {
+    this.upgradeIndicator.style.display = 'none';
+  }
+
+  hideCombo(): void {
+    this.comboText.style.display = 'none';
   }
 
   updateRound(round: number, roundWins?: Record<string, number>, myId?: string, opponentId?: string): void {
@@ -531,58 +686,146 @@ export default class HUD {
     this.cameraModeIndicator.textContent = thirdPerson ? '3RD PERSON [V]' : '1ST PERSON [V]';
   }
 
-  showReplayControls(replay: any[], onPlay: () => void): void {
-    // Show a simple replay indicator
-    const overlay = document.createElement('div');
-    overlay.id = 'replay-overlay';
-    overlay.style.cssText = `
-      position: fixed; top: 10px; right: 10px;
-      background: rgba(33,150,243,0.8); color: #fff;
-      padding: 8px 16px; border-radius: 5px;
-      font-size: 14px; font-weight: bold; z-index: 9999;
-    `;
-    overlay.textContent = `REPLAY - ${replay.length} events`;
-    document.body.appendChild(overlay);
+  // Desktop weapon bar: number key, name, selected highlight, cooldown fill.
+  createWeaponBar(onSelect: (code: number) => void): void {
+    if (this.isSpectator || this.weaponBar) return;
+    if ('ontouchstart' in window) return; // touch devices get the mobile buttons
+
+    const bar = document.createElement('div');
+    bar.className = 'weapon-bar';
+    bar.setAttribute('data-ui', '');
+    for (const w of WEAPON_INFO) {
+      const slot = document.createElement('button');
+      slot.type = 'button';
+      slot.className = 'weapon-slot';
+      slot.style.setProperty('--wcolor', w.color);
+      slot.title = `${w.name} — ${w.trait}`;
+      slot.innerHTML = `<span class="swatch" style="background:${w.color}"></span><span class="key">${w.code}</span>${w.name}<div class="cooldown"></div>`;
+      slot.addEventListener('click', () => {
+        onSelect(w.code);
+        slot.blur(); // keep Space/keys going to the game
+      });
+      bar.appendChild(slot);
+      this.weaponSlots[w.code] = slot;
+    }
+    this.container.appendChild(bar);
+    this.weaponBar = bar;
   }
 
-  hideReplayControls(): void {
-    const overlay = document.getElementById('replay-overlay');
-    if (overlay) overlay.remove();
+  updateWeaponBar(selected: number, cooldownPct: (code: number) => number): void {
+    if (!this.weaponBar) return;
+    for (const code in this.weaponSlots) {
+      const slot = this.weaponSlots[code];
+      const pct = cooldownPct(Number(code));
+      slot.classList.toggle('selected', Number(code) === selected);
+      slot.classList.toggle('ready', pct >= 1);
+      (slot.lastElementChild as HTMLElement).style.width = pct * 100 + '%';
+    }
   }
 
-  // Mobile weapon buttons
-  createMobileWeaponButtons(onSelect: (code: number) => void): void {
-    if (!('ontouchstart' in window)) return;
+  // One-time dismissible controls card (localStorage flag).
+  showControlsHint(): void {
+    if (this.isSpectator) return;
+    try {
+      if (localStorage.getItem(HINT_KEY)) return;
+    } catch (e) { /* storage unavailable: show every time */ }
 
-    const btnContainer = document.createElement('div');
-    btnContainer.style.cssText = `
-      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 8px; pointer-events: auto;
+    const card = document.createElement('div');
+    card.className = 'controls-hint';
+    card.setAttribute('data-ui', '');
+    card.innerHTML = document.body.classList.contains('touch-hud')
+      ? `
+      <b>Controls</b><br>
+      <b>Hold</b> left / right side of the screen to move<br>
+      <b>Tap / hold</b> the middle to fire or charge<br>
+      Buttons below: creature, <b>Shield</b>, <b>Wall</b>, <b>Cam</b>
+    `
+      : `
+      <b>Controls</b><br>
+      <b>A / D</b> move &nbsp; <b>click / hold</b> fire or charge<br>
+      <b>1-5</b> pick creature &nbsp; <b>Q</b> shield<br>
+      <b>E</b> place wall &nbsp; <b>V</b> camera view
     `;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Got it';
+    btn.addEventListener('click', () => {
+      card.remove();
+      this.controlsHint = null;
+      try { localStorage.setItem(HINT_KEY, '1'); } catch (e) { /* ignore */ }
+    });
+    card.appendChild(btn);
+    this.container.appendChild(card);
+    this.controlsHint = card;
+    this.syncControlsHint();
+  }
 
-    const weapons = [
-      { code: 1, label: 'Fox', color: '#ff6600' },
-      { code: 2, label: 'Horse', color: '#aa8833' },
-      { code: 3, label: 'Flamingo', color: '#ff69b4' },
-      { code: 4, label: 'Zombie', color: '#33ff33' },
-      { code: 5, label: 'Horde', color: '#9933ff' },
-    ];
+  // The hint never covers a centre overlay (waiting, round end, match over).
+  private syncControlsHint(): void {
+    if (!this.controlsHint) return;
+    const overlayOpen = (this.waitingOverlay?.style.display === 'flex') || this.gameOverOverlay.style.display === 'flex';
+    this.controlsHint.style.display = overlayOpen ? 'none' : '';
+  }
 
-    for (const w of weapons) {
+  // Mobile control bar: 5 weapons + shield, wall, camera in one row that fits the width.
+  createMobileWeaponButtons(
+    onSelect: (code: number) => void,
+    actions: { shield: () => void; wall: () => void; camera: () => void },
+  ): void {
+    if (!('ontouchstart' in window) || this.isSpectator || this.mobileBar) return;
+
+    document.body.classList.add('touch-hud');
+    const bar = document.createElement('div');
+    bar.className = 'mobile-bar';
+    bar.setAttribute('data-ui', '');
+
+    const mk = (cls: string, color: string, top: string, bottom: string, fn: () => void): HTMLButtonElement => {
       const btn = document.createElement('button');
-      btn.style.cssText = `
-        padding: 8px 14px; font-size: 14px; font-family: monospace;
-        background: rgba(0,0,0,0.7); color: ${w.color}; border: 2px solid ${w.color};
-        border-radius: 5px; pointer-events: auto;
-      `;
-      btn.textContent = `${w.code}:${w.label}`;
+      btn.type = 'button';
+      btn.className = 'mobile-btn ' + cls;
+      btn.style.setProperty('--wcolor', color);
+      btn.innerHTML = `<span class="top">${top}</span><span class="bot">${bottom}</span><div class="cooldown"></div>`;
+      // touchstart (not click) for instant response; UI targets never fire creatures.
       btn.addEventListener('touchstart', (e) => {
         e.stopPropagation();
-        onSelect(w.code);
-      });
-      btnContainer.appendChild(btn);
-    }
+        e.preventDefault();
+        fn();
+      }, { passive: false });
+      btn.addEventListener("click", () => btn.blur());
+      bar.appendChild(btn);
+      return btn;
+    };
 
-    this.container.appendChild(btnContainer);
+
+    const short = ['Fox', 'Horse', 'Flamgo', 'Zombie', 'Horde'];
+    for (const w of WEAPON_INFO) {
+      this.mobileSlots[w.code] = mk('mb-weapon', w.color, String(w.code), short[w.code - 1], () => onSelect(w.code));
+    }
+    mk('mb-action mb-first', '#2196f3', 'Q', 'Shield', actions.shield);
+    this.mobileShield = bar.lastElementChild as HTMLButtonElement;
+    this.mobileWall = mk('mb-action', '#ff9800', 'E', 'Wall ' + Constants.WALL_COST, actions.wall);
+    mk('mb-action', '#aaa', 'V', 'Cam', actions.camera);
+
+    this.container.appendChild(bar);
+    this.mobileBar = bar;
+  }
+
+  // Selected weapon, cooldown fill, shield readiness and wall affordability.
+  updateMobileBar(selected: number, cooldownPct: (code: number) => number, shieldReady: boolean, shieldPct: number): void {
+    const score = this.myScore;
+    if (!this.mobileBar) return;
+    for (const code in this.mobileSlots) {
+      const slot = this.mobileSlots[code];
+      const pct = cooldownPct(Number(code));
+      slot.classList.toggle('selected', Number(code) === selected);
+      slot.classList.toggle('ready', pct >= 1);
+      (slot.lastElementChild as HTMLElement).style.width = pct * 100 + '%';
+    }
+    if (this.mobileShield) {
+      this.mobileShield.classList.toggle('disabled', !shieldReady);
+      this.mobileShield.classList.toggle('ready', shieldReady);
+      (this.mobileShield.lastElementChild as HTMLElement).style.width = (shieldReady ? 1 : shieldPct) * 100 + '%';
+    }
+    if (this.mobileWall) this.mobileWall.classList.toggle('disabled', score < Constants.WALL_COST);
   }
 }
