@@ -268,7 +268,7 @@ class Game {
       id: crypto.randomBytes(4).toString('hex'),
       type,
       position: {
-        x: (Math.random() - 0.5) * 600,
+        x: clampArenaX((Math.random() - 0.5) * 980),
         y: 0,
         z: (Math.random() - 0.5) * 1400,
       },
@@ -289,15 +289,17 @@ class Game {
         delete this.powerUps[puId];
         continue;
       }
-      // Check player collection
-      for (const pid in this.players) {
-        const player = this.players[pid];
-        const dx = Math.abs(player.position.x - pu.position.x);
-        const dz = Math.abs(player.position.z - pu.position.z);
+      // Collected by the first creature passing through it (x/z only: flamingos fly), credited to its owner
+      for (const zid in this.zombies) {
+        const zombie = this.zombies[zid];
+        const player = this.players[zombie.firedByPlayer];
+        if (!player) continue;
+        const dx = Math.abs(zombie.position.x - pu.position.x);
+        const dz = Math.abs(zombie.position.z - pu.position.z);
         if (dx < POWERUP_COLLECT_RADIUS && dz < POWERUP_COLLECT_RADIUS) {
           this.applyPowerUp(player, pu);
-          this.emitAll('powerup.collect', puId, pid, pu.type);
-          this.recordReplay('powerup.collect', { id: puId, player: pid, type: pu.type });
+          this.emitAll('powerup.collect', puId, player.id, pu.type);
+          this.recordReplay('powerup.collect', { id: puId, player: player.id, type: pu.type });
           delete this.powerUps[puId];
           break;
         }
