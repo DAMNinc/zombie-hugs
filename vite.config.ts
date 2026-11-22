@@ -9,7 +9,7 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, 'public/js'),
     emptyOutDir: true,
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         zombie: path.resolve(__dirname, 'src/client/zombie.ts'),
       },
