@@ -145,3 +145,55 @@ html, body {
   font-family: monospace;
   cursor: pointer;
 }
+
+/* Mobile control bar (touch devices): weapons + shield / wall / camera in one row */
+.mobile-bar {
+  position: fixed;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  gap: 4px;
+  pointer-events: auto;
+  font-family: monospace;
+}
+.mobile-btn {
+  position: relative;
+  overflow: hidden;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 46px;
+  padding: 2px 0;
+  background: rgba(0, 0, 0, 0.75);
+  border: 2px solid #444;
+  border-radius: 5px;
+  color: #ddd;
+  font-family: monospace;
+  line-height: 1.15;
+  text-align: center;
+}
+.mobile-btn .top { display: block; font-size: 14px; font-weight: bold; color: var(--wcolor); }
+.mobile-btn .bot { display: block; font-size: 9px; white-space: nowrap; }
+.mobile-btn.selected { border-color: var(--wcolor); background: rgba(50, 50, 50, 0.95); color: #fff; }
+.mobile-btn.mb-action { border-color: var(--wcolor); }
+.mobile-btn.mb-first { margin-left: 6px; }
+.mobile-btn.disabled { opacity: 0.4; }
+.mobile-btn .cooldown {
+  position: absolute; left: 0; bottom: 0; height: 3px; width: 100%;
+  background: var(--wcolor); opacity: 0.35;
+}
+.mobile-btn.ready .cooldown { opacity: 0.9; }
+
+/* Keep the rest of the HUD clear of the bar */
+body.touch-hud .hud-lift { transform: translateY(-60px); }
+body.touch-hud .hud-charge {
+  bottom: 62px !important;
+  left: auto !important;
+  right: 10px !important;
+  transform: none !important;
+  width: 120px !important;
+}
+body.touch-hud .hud-desktop-only { display: none !important; }
+@media (max-width: 700px) {
+  body.touch-hud .weapon-bar { display: none; }
+}

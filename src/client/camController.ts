@@ -97,10 +97,10 @@ export default class CamController {
           selectWeapon(keyCode);
           break;
         case 81: // Q - Shield
-          if (socket) socket.emit('shield');
+          self.activateShield();
           break;
         case 69: // E - Place Wall
-          if (socket) socket.emit('place.wall', camera.position.x);
+          self.placeWall();
           break;
         case 86: // V - Toggle camera view
           if (!spectatorMode) {
@@ -187,6 +187,14 @@ export default class CamController {
       socket.emit('weapon.set', code);
       this.weapon = code;
     }
+  }
+
+  activateShield(): void {
+    if (socket) socket.emit('shield');
+  }
+
+  placeWall(): void {
+    if (socket) socket.emit('place.wall', camera.position.x);
   }
 
   toggleCameraMode(): void {

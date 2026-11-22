@@ -82,13 +82,10 @@ function updateGameState(elapsed: number): void {
   if (hud && camController && !camController.isSpectatorMode()) {
     const now = Date.now();
     const cooldownEnd = gameState.shieldCooldownUntil || 0;
-    if (now >= cooldownEnd) {
-      hud.updateShieldCooldown(true, 1);
-    } else {
-      const total = 15000;
-      const remaining = cooldownEnd - now;
-      hud.updateShieldCooldown(false, 1 - (remaining / total));
-    }
+    const shieldReady = now >= cooldownEnd;
+    const shieldPct = shieldReady ? 1 : 1 - ((cooldownEnd - now) / 15000);
+    hud.updateShieldCooldown(shieldReady, shieldPct);
+    hud.updateMobileBar(camController.weapon, (c) => camController!.getCooldownPct(c), shieldReady, shieldPct);
   }
 
   // Pulse hazards
@@ -440,6 +437,10 @@ function setupEvents(): void {
         if (camController) {
           camController.selectWeaponByCode(code);
         }
+      }, {
+        shield: () => camController?.activateShield(),
+        wall: () => camController?.placeWall(),
+        camera: () => camController?.toggleCameraMode(),
       });
     }
 

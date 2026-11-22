@@ -1,5 +1,7 @@
 import Constants from './constants';
 
+// Mirrors WALL_COST in lib/controller.ts.
+const WALL_COST = 3;
 const HINT_KEY = 'zombieHugsControlsHintSeen';
 
 // Trait text is the matchup legend (see Zombie.isCollision in lib/controller.ts).
@@ -12,6 +14,11 @@ const WEAPON_INFO = [
 ];
 
 export default class HUD {
+  private mobileBar: HTMLDivElement | null = null;
+  private mobileSlots: Record<string, HTMLButtonElement> = {};
+  private mobileShield: HTMLButtonElement | null = null;
+  private mobileWall: HTMLButtonElement | null = null;
+  private myScore = 0;
   private weaponBar: HTMLDivElement | null = null;
   private weaponSlots: Record<string, HTMLButtonElement> = {};
   private container: HTMLDivElement;
@@ -66,6 +73,7 @@ export default class HUD {
       width: 100%; height: 100%; background: #4caf50;
       transition: width 0.3s; border-radius: 2px;
     `;
+    hpContainer.className = 'hud-lift';
     hpContainer.appendChild(this.hpBar);
     this.hpText = document.createElement('span');
     this.hpText.style.cssText = `
@@ -182,6 +190,7 @@ export default class HUD {
     `;
     shieldLabel.textContent = 'SHIELD [Q]';
     this.shieldCooldown.appendChild(shieldLabel);
+    this.shieldCooldown.className = 'hud-lift';
     this.container.appendChild(this.shieldCooldown);
 
     // Upgrade indicator
@@ -190,6 +199,7 @@ export default class HUD {
       position: fixed; bottom: 75px; left: 10px;
       color: #ff0; font-size: 12px; display: none;
     `;
+    this.upgradeIndicator.className = 'hud-lift';
     this.container.appendChild(this.upgradeIndicator);
 
     // Ping display
@@ -198,6 +208,7 @@ export default class HUD {
       position: fixed; bottom: 5px; right: 5px;
       color: #888; font-size: 11px; font-family: monospace;
     `;
+    this.pingDisplay.className = 'hud-desktop-only';
     this.container.appendChild(this.pingDisplay);
 
     // === NEW FEATURE HUD ELEMENTS ===
@@ -208,6 +219,7 @@ export default class HUD {
       position: fixed; bottom: 95px; left: 10px;
       font-size: 12px; display: none;
     `;
+    this.powerUpIndicator.className = 'hud-lift';
     this.container.appendChild(this.powerUpIndicator);
 
     // Charge bar (bottom-center)
@@ -226,6 +238,7 @@ export default class HUD {
     chargeLabel.style.cssText = 'position: absolute; top: -14px; left: 0; font-size: 10px; color: #aaa;';
     chargeLabel.textContent = 'CHARGE [HOLD]';
     this.chargeBar.appendChild(chargeLabel);
+    this.chargeBar.className = 'hud-charge';
     this.container.appendChild(this.chargeBar);
 
     // Synergy text (center, slightly below combo)
@@ -264,6 +277,7 @@ export default class HUD {
       color: #888; font-size: 11px; font-family: monospace;
       display: none;
     `;
+    this.eloDisplay.className = 'hud-desktop-only';
     this.container.appendChild(this.eloDisplay);
 
     // Camera mode indicator (bottom-right, above ping)
@@ -273,6 +287,7 @@ export default class HUD {
       color: #888; font-size: 11px; font-family: monospace;
     `;
     this.cameraModeIndicator.textContent = '1ST PERSON [V]';
+    this.cameraModeIndicator.className = 'hud-desktop-only';
     this.container.appendChild(this.cameraModeIndicator);
 
     // Spectator vote panel (only for spectators)
@@ -320,6 +335,7 @@ export default class HUD {
   }
 
   updateScore(myScore: number, opponentScore: number): void {
+    this.myScore = myScore;
     this.scoreText.textContent = String(myScore);
     this.opponentScoreText.textContent = String(opponentScore);
   }
@@ -690,39 +706,65 @@ export default class HUD {
     this.container.appendChild(card);
   }
 
-  // Mobile weapon buttons
-  createMobileWeaponButtons(onSelect: (code: number) => void): void {
-    if (!('ontouchstart' in window)) return;
+  // Mobile control bar: 5 weapons + shield, wall, camera in one row that fits the width.
+  createMobileWeaponButtons(
+    onSelect: (code: number) => void,
+    actions: { shield: () => void; wall: () => void; camera: () => void },
+  ): void {
+    if (!('ontouchstart' in window) || this.isSpectator || this.mobileBar) return;
 
-    const btnContainer = document.createElement('div');
-    btnContainer.style.cssText = `
-      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 8px; pointer-events: auto;
-    `;
+    document.body.classList.add('touch-hud');
+    const bar = document.createElement('div');
+    bar.className = 'mobile-bar';
+    bar.setAttribute('data-ui', '');
 
-    const weapons = [
-      { code: 1, label: 'Fox', color: '#ff6600' },
-      { code: 2, label: 'Horse', color: '#aa8833' },
-      { code: 3, label: 'Flamingo', color: '#ff69b4' },
-      { code: 4, label: 'Zombie', color: '#33ff33' },
-      { code: 5, label: 'Horde', color: '#9933ff' },
-    ];
-
-    for (const w of weapons) {
+    const mk = (cls: string, color: string, top: string, bottom: string, fn: () => void): HTMLButtonElement => {
       const btn = document.createElement('button');
-      btn.style.cssText = `
-        padding: 8px 14px; font-size: 14px; font-family: monospace;
-        background: rgba(0,0,0,0.7); color: ${w.color}; border: 2px solid ${w.color};
-        border-radius: 5px; pointer-events: auto;
-      `;
-      btn.textContent = `${w.code}:${w.label}`;
+      btn.type = 'button';
+      btn.className = 'mobile-btn ' + cls;
+      btn.style.setProperty('--wcolor', color);
+      btn.innerHTML = `<span class="top">${top}</span><span class="bot">${bottom}</span><div class="cooldown"></div>`;
+      // touchstart (not click) for instant response; UI targets never fire creatures.
       btn.addEventListener('touchstart', (e) => {
         e.stopPropagation();
-        onSelect(w.code);
-      });
-      btnContainer.appendChild(btn);
-    }
+        e.preventDefault();
+        fn();
+      }, { passive: false });
+      btn.addEventListener("click", () => btn.blur());
+      bar.appendChild(btn);
+      return btn;
+    };
 
-    this.container.appendChild(btnContainer);
+
+    const short = ['Fox', 'Horse', 'Flamgo', 'Zombie', 'Horde'];
+    for (const w of WEAPON_INFO) {
+      this.mobileSlots[w.code] = mk('mb-weapon', w.color, String(w.code), short[w.code - 1], () => onSelect(w.code));
+    }
+    mk('mb-action mb-first', '#2196f3', 'Q', 'Shield', actions.shield);
+    this.mobileShield = bar.lastElementChild as HTMLButtonElement;
+    this.mobileWall = mk('mb-action', '#ff9800', 'E', 'Wall ' + WALL_COST, actions.wall);
+    mk('mb-action', '#aaa', 'V', 'Cam', actions.camera);
+
+    this.container.appendChild(bar);
+    this.mobileBar = bar;
+  }
+
+  // Selected weapon, cooldown fill, shield readiness and wall affordability.
+  updateMobileBar(selected: number, cooldownPct: (code: number) => number, shieldReady: boolean, shieldPct: number): void {
+    const score = this.myScore;
+    if (!this.mobileBar) return;
+    for (const code in this.mobileSlots) {
+      const slot = this.mobileSlots[code];
+      const pct = cooldownPct(Number(code));
+      slot.classList.toggle('selected', Number(code) === selected);
+      slot.classList.toggle('ready', pct >= 1);
+      (slot.lastElementChild as HTMLElement).style.width = pct * 100 + '%';
+    }
+    if (this.mobileShield) {
+      this.mobileShield.classList.toggle('disabled', !shieldReady);
+      this.mobileShield.classList.toggle('ready', shieldReady);
+      (this.mobileShield.lastElementChild as HTMLElement).style.width = (shieldReady ? 1 : shieldPct) * 100 + '%';
+    }
+    if (this.mobileWall) this.mobileWall.classList.toggle('disabled', score < WALL_COST);
   }
 }
