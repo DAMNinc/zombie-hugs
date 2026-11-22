@@ -1,0 +1,34 @@
+# Easter eggs (maintainers only)
+
+Hidden by design: not mentioned in the in-game UI, landing page or README. All eggs are cosmetic and client-local: they never change gameplay, score, ELO, hp or any server state, send no socket events, and `lib/controller.ts` is not involved.
+
+In-game eggs (a, d) are desktop-keyboard only, for players and spectators. They only fire while the game is in the active phase (between `game.start` and `round.end` / `round.reset` / `match.over` / `game.countdown`), never while an input/textarea/select/contenteditable is focused or a bootstrap modal is open. Each egg lasts < 10 s, has a cooldown >= 10 s, and cleans up all DOM nodes and timers.
+
+## (a) Konami code
+- Trigger: during a game, ArrowUp ArrowUp ArrowDown ArrowDown ArrowLeft ArrowRight ArrowLeft ArrowRight b a.
+- Effect: rainbow/"disco" coloured creatures plus a fanfare for a few seconds.
+- Safety: original creature materials restored on cleanup; cooldown >= 10 s.
+- Code: `src/client/easterEggs.ts` (planned: entry in `EGGS`).
+
+## (b) Title x5
+- Trigger: click/tap the "Zombie Hugs" `h1` on the landing page 5 times quickly.
+- Effect: hug-emoji rain animation.
+- Safety: overlay is `pointer-events: none`, removed after the animation; cooldown >= 10 s. Works on touch.
+- Code: `views/index.handlebars` inline script (planned; not part of the vite bundle).
+
+## (c) Rare special score (~1%)
+- Trigger: a scored point, ~1% chance.
+- Effect: special killfeed message and/or special creature look.
+- Safety: purely visual, no effect on the score itself.
+- Code: `src/client/zombie.ts` score handler + `src/client/easterEggs.ts` (planned).
+
+## (d) "brains"
+- Trigger: type b-r-a-i-n-s in sequence during a game (letters only; the sequence resets after a gap of more than 2 s).
+- Effect: zombie groan (procedural `'groan'` sound, ~1.2 s) and a ~2.5 s greenish full-screen tint (fixed div, `pointer-events: none`, z-index 9980: above the canvas, below the HUD at 9990+).
+- Safety: the listener only observes, so `a`/`s` still reach `camController` and move the player; cooldown 10 s.
+- Code: `src/client/easterEggs.ts` (`brainsEgg`), `'groan'` in `src/client/audio.ts`, hooks in `src/client/zombie.ts` (`easterEggs.setPhase`).
+
+## How to add an egg
+1. In `src/client/easterEggs.ts`, write an effect `function run(ctx: EggContext): () => void` that starts the effect and returns a cleanup removing every DOM node/timer/material change.
+2. Add one `Egg` entry to the `EGGS` array: `{ id, cooldownMs (>= 10000), durationMs (< 10000), match(keys), run }`. `keys` is the rolling buffer of normalized key names (letters lower-cased, arrows as `ArrowUp` etc.); use `endsWith(keys, [...])`.
+3. Gating, the buffer, cooldowns, the "one egg at a time" guard and guaranteed cleanup are handled by the `EasterEggs` class. Add new sounds to `SoundName` and the switch in `src/client/audio.ts`.
