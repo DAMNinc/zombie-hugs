@@ -51,7 +51,7 @@ app.get('/', (_req, res) => {
 });
 
 app.post('/game', (req, res) => {
-  const gameId = controller.newGame(req.body.gameName);
+  const gameId = controller.newGame(req.body?.gameName);
   if (gameId === null) {
     logger.warn('Refused to create a game: too many live games');
     res.status(503).send('Too many games are running right now. Please try again in a minute.');

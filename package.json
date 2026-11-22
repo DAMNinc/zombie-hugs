@@ -5,8 +5,8 @@
   "main": "dist/server.js",
   "dependencies": {
     "@types/three": "^0.183.1",
-    "express": "^4.21.0",
-    "express-handlebars": "^8.0.1",
+    "express": "^5.3.0",
+    "express-handlebars": "^9.0.6",
     "socket.io": "^4.8.4",
     "socket.io-client": "^4.8.4",
     "three": "^0.183.2",
