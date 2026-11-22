@@ -6,6 +6,9 @@ export default class Constants {
   static get HORDE(): number { return 5; }
   static get MAX_HP(): number { return 10; }
   static get MAX_CHARGE_MS(): number { return 3000; }
+  // Mirrors lib/validate.ts: players are clamped to ±(ARENA_HALF_WIDTH - ARENA_MARGIN).
+  static get ARENA_HALF_WIDTH(): number { return 500; }
+  static get ARENA_MARGIN(): number { return 10; }
   static get WALL_COST(): number { return 3; }
 }
 

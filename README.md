@@ -3,10 +3,22 @@ zombie-hugs
 
 Fire those zombies away (actually, it's foxes right now).
 
-To run the server:
+Requires Node.js 20 or newer.
 
     $ npm install
-    $ node_modules/.bin/gulp
+    $ npm run build
+    $ npm start
+
+The server listens on port 3000 (override with the `PORT` environment
+variable).
+
+For development (rebuilds the client and restarts the server on changes):
+
+    $ npm run dev
+
+To run the test suite:
+
+    $ npm test
 
 [Example server](https://zombie-hugs.onrender.com/).
 

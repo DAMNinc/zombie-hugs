@@ -7,12 +7,11 @@ import CamController from './camController';
 import Explosion from './explosion';
 import Terrain from './terrain';
 import Fox from './fox';
-import gameConsole from './console';
-import Score from './score';
 import HUD from './hud';
 import Audio from './audio';
 import ScreenShake from './screenshake';
 import KillFeed from './killfeed';
+import { disposeObject } from './dispose';
 import { parseLegacyJSON } from './LegacyJSONLoader';
 
 // Expose THREE and helpers globally for non-bundled scripts (gallery.js)
@@ -31,6 +30,8 @@ let animating = false;
 let hud: HUD | null = null;
 let audio: Audio | null = null;
 let screenShake: ScreenShake | null = null;
+// Mirrors SHIELD_COOLDOWN_MS in lib/controller.ts.
+const SHIELD_COOLDOWN_MS = 15000;
 let killFeed: KillFeed | null = null;
 let shieldMeshes: Record<string, any> = {};
 let pingStart: number = 0;
@@ -40,7 +41,6 @@ const socket = io();
 let hazardMeshes: any[] = [];
 let powerUpMeshes: Record<string, any> = {};
 let wallMeshes: Record<string, any> = {};
-let currentReplay: any[] | null = null;
 
 function updateGameState(elapsed: number): void {
   for (const key in gameState.players) {
@@ -51,13 +51,15 @@ function updateGameState(elapsed: number): void {
     gameState.zombies[key].update(elapsed);
   }
 
-  for (const explosion of gameState.explosions) {
-    explosion.update(elapsed);
-  }
+  // Drop finished explosions: remove from the scene and free their GPU buffers.
+  gameState.explosions = gameState.explosions.filter((explosion: Explosion) => {
+    if (explosion.update(elapsed)) return true;
+    explosion.dispose();
+    return false;
+  });
 
-  if (screenShake) {
-    screenShake.update(elapsed);
-  }
+  // Take last frame's shake offset off the camera before the controller moves it; re-apply after.
+  if (screenShake) screenShake.clear();
 
   if (camController != null) {
     camController.update(elapsed);
@@ -66,6 +68,7 @@ function updateGameState(elapsed: number): void {
     if (hud && !camController.isSpectatorMode()) {
       hud.updateCharge(camController.getChargePct());
       hud.updateCameraMode(camController.isThirdPerson());
+      hud.updateWeaponBar(camController.weapon, (c) => camController!.getCooldownPct(c));
 
       // Show/hide own player mesh based on camera mode
       const myPlayer = gameState.players[gameState.myId];
@@ -75,17 +78,23 @@ function updateGameState(elapsed: number): void {
     }
   }
 
+  if (screenShake) screenShake.update(elapsed);
+
   // Update shield cooldown display
   if (hud && camController && !camController.isSpectatorMode()) {
     const now = Date.now();
     const cooldownEnd = gameState.shieldCooldownUntil || 0;
-    if (now >= cooldownEnd) {
-      hud.updateShieldCooldown(true, 1);
-    } else {
-      const total = 15000;
-      const remaining = cooldownEnd - now;
-      hud.updateShieldCooldown(false, 1 - (remaining / total));
-    }
+    const shieldReady = now >= cooldownEnd;
+    const shieldPct = shieldReady ? 1 : 1 - ((cooldownEnd - now) / SHIELD_COOLDOWN_MS);
+    hud.updateShieldCooldown(shieldReady, shieldPct);
+    hud.updateMobileBar(camController.weapon, (c) => camController!.getCooldownPct(c), shieldReady, shieldPct);
+  }
+
+  // Pulse hazards
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 250);
+  for (const group of hazardMeshes) {
+    const mat = group.userData?.fillMat;
+    if (mat) mat.opacity = 0.25 + 0.25 * pulse;
   }
 
   // Rotate power-up meshes
@@ -110,6 +119,7 @@ function removeZombie(zombieId: string): void {
   const zombie = gameState.zombies[zombieId];
   if (!zombie) return;
   scene.remove(zombie.getMesh());
+  disposeObject(zombie.getMesh());
   delete gameState.zombies[zombieId];
 }
 
@@ -132,11 +142,12 @@ function getZombieModelFromCode(code: number): any {
       zombieModel = models!.getHorde();
       break;
   }
-  return zombieModel;
+  // Unknown weapon codes fall back to the fox model.
+  return zombieModel || models!.getZombie();
 }
 
-function createFoxFromModel(direction: number, position: any, model: any, name?: string, weaponCode?: number): Fox {
-  const fox = new Fox(direction, model, name, weaponCode);
+function createFoxFromModel(direction: number, position: any, model: any, name?: string, weaponCode?: number, health?: number, speed?: number): Fox {
+  const fox = new Fox(direction, model, name, weaponCode, health, speed);
 
   fox.foxObj.mesh.position.x = position.x + model.offset.x;
   fox.foxObj.mesh.position.y = position.y - 50 + model.offset.y;
@@ -159,7 +170,6 @@ function createFoxFromModel(direction: number, position: any, model: any, name?:
 }
 
 function setWeapon(player: Player, code: number): void {
-  gameConsole.log('called for ' + player.name);
   const zombieModel = getZombieModelFromCode(code);
 
   const startPosition = {
@@ -171,18 +181,105 @@ function setWeapon(player: Player, code: number): void {
   startPosition.y += 50;
   startPosition.x += player.getDirection() * -1 * 25;
 
-  const currentWeaponMesh = player.getCurrentWeapon();
-  if (currentWeaponMesh) {
-    scene.remove(currentWeaponMesh.getMesh());
-  }
-
+  // Build the new mesh first so a failure never leaves the player without a weapon.
   const fox = createFoxFromModel(player.getDirection() * -1, startPosition, zombieModel);
   fox.setSpeed(0);
   const s = 0.25 * (zombieModel.scale || 1);
   fox.getMesh().scale.set(s, s, s);
+
+  const currentWeaponMesh = player.getCurrentWeapon();
+  if (currentWeaponMesh) {
+    scene.remove(currentWeaponMesh.getMesh());
+    disposeObject(currentWeaponMesh.getMesh());
+  }
   scene.add(fox.getMesh());
 
   player.setWeapon(code, fox);
+}
+
+const OWN_COLOR = 0x4caf50;
+const OPP_COLOR = 0xf44336;
+let ringGeometry: THREE.RingGeometry | null = null;
+const ringMaterials: Record<string, THREE.MeshBasicMaterial> = {};
+
+// Shared by all creatures: marked so disposeObject skips them.
+function getRingGeometry(): THREE.RingGeometry {
+  if (!ringGeometry) {
+    ringGeometry = new THREE.RingGeometry(55, 80, 32);
+    ringGeometry.userData.shared = true;
+  }
+  return ringGeometry;
+}
+
+function getRingMaterial(mine: boolean): THREE.MeshBasicMaterial {
+  const key = mine ? 'mine' : 'opp';
+  if (!ringMaterials[key]) {
+    const m = new THREE.MeshBasicMaterial({
+      color: mine ? OWN_COLOR : OPP_COLOR,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    m.userData.shared = true;
+    ringMaterials[key] = m;
+  }
+  return ringMaterials[key];
+}
+
+function addZombie(zombie: any, playerId: string | undefined, playSound: boolean): void {
+  if (gameState.zombies[zombie.id]) return;
+  const weaponCode = zombie.weaponCode || (playerId && gameState.players[playerId]?.getWeaponCode()) || 1;
+  const zombieModel = getZombieModelFromCode(weaponCode);
+
+  const fox = createFoxFromModel(zombie.direction, zombie.position, zombieModel, zombie.name, weaponCode, zombie.health, zombie.speed);
+  if (zombieModel.scale) {
+    const s = zombieModel.scale;
+    fox.getMesh().scale.set(s, s, s);
+  }
+
+  // Scale up based on charge ratio (0 = normal, 1 = up to 2x size)
+  const chargeRatio = zombie.chargeRatio || 0;
+  if (chargeRatio > 0.1) {
+    const chargeScale = 1 + chargeRatio; // 1.0 to 2.0x
+    const mesh = fox.getMesh();
+    mesh.scale.set(
+      mesh.scale.x * chargeScale,
+      mesh.scale.y * chargeScale,
+      mesh.scale.z * chargeScale,
+    );
+  }
+
+  // Owner tint: a ring under the creature, green for mine and red for the opponent's.
+  // The state payload has no owner, so fall back to the direction (creatures move against their owner's side).
+  let ownerId = playerId;
+  if (!ownerId) {
+    for (const pid in gameState.players) {
+      if (gameState.players[pid].direction === -zombie.direction) ownerId = pid;
+    }
+  }
+  if (ownerId) {
+    const mesh = fox.getMesh();
+    const ring = new THREE.Mesh(getRingGeometry(), getRingMaterial(ownerId === gameState.myId));
+    ring.name = 'owner-ring';
+    // Undo the creature's scale so the ring has the same world size for every type.
+    const k = 1 / (mesh.scale.x || 1);
+    ring.scale.set(k, k, k);
+    ring.position.y = 44 * k; // mesh sits 40 below the creature position; this puts the ring just above ground
+    ring.rotation.x = -Math.PI / 2;
+    mesh.add(ring);
+  }
+
+  scene.add(fox.getMesh());
+  gameState.zombies[zombie.id] = fox;
+
+  if (playSound && audio) {
+    if (chargeRatio > 0.3) {
+      audio.play('charged_fire');
+    } else {
+      audio.play('fire');
+    }
+  }
 }
 
 function getOpponentId(): string | null {
@@ -218,6 +315,7 @@ function addShieldMesh(playerId: string): void {
 function removeShieldMesh(playerId: string): void {
   if (shieldMeshes[playerId]) {
     scene.remove(shieldMeshes[playerId]);
+    disposeObject(shieldMeshes[playerId]);
     delete shieldMeshes[playerId];
   }
 }
@@ -244,37 +342,89 @@ function addPowerUpMesh(powerUp: any): void {
 function removePowerUpMesh(id: string): void {
   if (powerUpMeshes[id]) {
     scene.remove(powerUpMeshes[id]);
+    disposeObject(powerUpMeshes[id]);
     delete powerUpMeshes[id];
   }
 }
 
 const HAZARD_COLORS: Record<string, number> = {
-  damage: 0xff0000,
-  slow: 0x0066ff,
-  wind: 0x00ff66,
+  damage: 0xff2222,
+  slow: 0x2288ff,
+  wind: 0xaaffff,
 };
+const HAZARD_LABELS: Record<string, string> = { damage: 'DAMAGE', slow: 'SLOW', wind: 'WIND' };
+const HAZARD_HEIGHT = 70;
+let hazardKillAnnounced = false;
 
-function renderHazards(hazards: any[]): void {
-  // Clear old hazard meshes
+function makeHazardLabel(text: string, color: number): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.font = 'bold 44px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeText(text, 128, 34);
+    ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+    ctx.fillText(text, 128, 34);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+  sprite.scale.set(160, 40, 1);
+  sprite.renderOrder = 10;
+  return sprite;
+}
+
+function removeHazardMeshes(): void {
   for (const mesh of hazardMeshes) {
     scene.remove(mesh);
+    disposeObject(mesh);
   }
   hazardMeshes = [];
+}
+
+function renderHazards(hazards: any[]): void {
+  removeHazardMeshes();
+  hazardKillAnnounced = false; // 'hazards' is re-sent for every round
 
   for (const h of hazards) {
     const color = HAZARD_COLORS[h.type] || 0xffffff;
-    const geometry = new THREE.PlaneGeometry(h.width, h.depth);
-    const material = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.2,
-      side: THREE.DoubleSide,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(h.position.x, 1, h.position.z);
-    scene.add(mesh);
-    hazardMeshes.push(mesh);
+    const group = new THREE.Group();
+    group.position.set(h.position.x, 0, h.position.z);
+
+    // Floor fill (pulses)
+    const fillMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false });
+    const fill = new THREE.Mesh(new THREE.PlaneGeometry(h.width, h.depth), fillMat);
+    fill.rotation.x = -Math.PI / 2;
+    fill.position.y = 1;
+    group.add(fill);
+
+    // Edges of the volume, readable from first person
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(h.width, HAZARD_HEIGHT, h.depth)),
+      new THREE.LineBasicMaterial({ color }),
+    );
+    edges.position.y = HAZARD_HEIGHT / 2;
+    group.add(edges);
+
+    // Faint translucent walls so the zone reads as a volume
+    const walls = new THREE.Mesh(
+      new THREE.BoxGeometry(h.width, HAZARD_HEIGHT, h.depth),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    walls.position.y = HAZARD_HEIGHT / 2;
+    group.add(walls);
+
+    const label = makeHazardLabel(HAZARD_LABELS[h.type] || String(h.type).toUpperCase(), color);
+    label.position.y = HAZARD_HEIGHT + 40;
+    group.add(label);
+
+    group.userData.fillMat = fillMat;
+    scene.add(group);
+    hazardMeshes.push(group);
   }
 }
 
@@ -291,88 +441,44 @@ function addWallMesh(wall: any): void {
 function removeWallMesh(id: string): void {
   if (wallMeshes[id]) {
     scene.remove(wallMeshes[id]);
+    disposeObject(wallMeshes[id]);
     delete wallMeshes[id];
+  }
+}
+
+// Everything the server resets between rounds, rematches and when the opponent leaves.
+function clearRoundState(): void {
+  for (const key in gameState.zombies) {
+    removeZombie(key);
+  }
+  for (const pid in shieldMeshes) {
+    removeShieldMesh(pid);
+  }
+  clearArenaFeatures();
+  gameState.shieldCooldownUntil = 0;
+  if (hud) {
+    hud.hideSuddenDeath();
+    hud.hidePowerUp();
+    hud.hideUpgrade();
+    hud.hideCombo();
   }
 }
 
 function clearArenaFeatures(): void {
   for (const id in powerUpMeshes) removePowerUpMesh(id);
   for (const id in wallMeshes) removeWallMesh(id);
-  for (const mesh of hazardMeshes) scene.remove(mesh);
-  hazardMeshes = [];
-}
-
-// === REPLAY SYSTEM ===
-
-function playReplay(replay: any[]): void {
-  if (!replay || replay.length === 0) return;
-  if (hud) hud.showReplayControls(replay, () => {});
-
-  let index = 0;
-  const startTime = Date.now();
-  const baseTime = replay[0].time;
-
-  const tick = () => {
-    const elapsed = Date.now() - startTime;
-    while (index < replay.length && replay[index].time - baseTime <= elapsed) {
-      const event = replay[index];
-      if (killFeed) {
-        killFeed.add(`[REPLAY] ${event.type}`, '#2196f3');
-      }
-      index++;
-    }
-    if (index < replay.length) {
-      requestAnimationFrame(tick);
-    } else {
-      if (hud) hud.hideReplayControls();
-      if (killFeed) killFeed.add('Replay complete', '#2196f3');
-    }
-  };
-  tick();
+  removeHazardMeshes();
 }
 
 function setupEvents(): void {
   // Event for receiving information about zombies.
   socket.on('zombie', (zombie: any, playerId: string) => {
-    gameConsole.log('Zombie added for ' + playerId);
-
-    const weaponCode = zombie.weaponCode || gameState.players[playerId]?.getWeaponCode() || 1;
-    const zombieModel = getZombieModelFromCode(weaponCode);
-
-    const fox = createFoxFromModel(zombie.direction, zombie.position, zombieModel, zombie.name, weaponCode);
-    if (zombieModel.scale) {
-      const s = zombieModel.scale;
-      fox.getMesh().scale.set(s, s, s);
-    }
-
-    // Scale up based on charge ratio (0 = normal, 1 = up to 2x size)
-    const chargeRatio = zombie.chargeRatio || 0;
-    if (chargeRatio > 0.1) {
-      const chargeScale = 1 + chargeRatio; // 1.0 to 2.0x
-      const mesh = fox.getMesh();
-      mesh.scale.set(
-        mesh.scale.x * chargeScale,
-        mesh.scale.y * chargeScale,
-        mesh.scale.z * chargeScale,
-      );
-    }
-
-    scene.add(fox.getMesh());
-    gameState.zombies[zombie.id] = fox;
-
-    if (audio) {
-      if (chargeRatio > 0.3) {
-        audio.play('charged_fire');
-      } else {
-        audio.play('fire');
-      }
-    }
+    addZombie(zombie, playerId, true);
   });
 
   // Event for receiving player information from the server.
   socket.on('player', (player: any) => {
     gameState.myId = player.id;
-    gameConsole.info('I am: ' + player.name);
 
     const p = new Player(player.id, player.name, player.position, player.direction, models!.getPlayer(player.direction));
     setWeapon(p, Constants.FOX);
@@ -390,15 +496,28 @@ function setupEvents(): void {
     }
 
     camController = new CamController(camera, socket, player.direction);
+    camController.clearShake = () => screenShake?.clear();
 
-    // Setup mobile weapon buttons
+    // Weapon bar (desktop), mobile weapon buttons, one-time controls hint
     if (hud) {
+      hud.createWeaponBar((code: number) => {
+        if (camController) camController.selectWeaponByCode(code);
+      });
       hud.createMobileWeaponButtons((code: number) => {
         if (camController) {
           camController.selectWeaponByCode(code);
         }
+      }, {
+        shield: () => camController?.activateShield(),
+        wall: () => camController?.placeWall(),
+        camera: () => camController?.toggleCameraMode(),
       });
+      // After the mobile bar, so the hint knows whether the touch HUD is active.
+      hud.showControlsHint();
     }
+
+    // Alone in the lobby until an opponent shows up.
+    if (hud) hud.showWaiting(false);
 
     // Send ready signal
     socket.emit('ready');
@@ -406,7 +525,6 @@ function setupEvents(): void {
 
   // Event for receiving opponent information from the server.
   socket.on('opponent', (player: any) => {
-    gameConsole.info('The opponent has joined the game: ' + player.name);
 
     const p = new Player(player.id, player.name, player.position, player.direction, models!.getPlayer(player.direction));
     setWeapon(p, player.weaponCode);
@@ -415,25 +533,19 @@ function setupEvents(): void {
 
     if (player.id !== gameState.myId) {
       scene.add(p.getMesh());
+      if (hud) hud.hideWaiting();
     }
 
     socket.emit('ready');
   });
 
-  // Event for receiving spectator information from the server.
-  socket.on('spectator', (_player: any) => {
-    gameConsole.info('A spectator has joined...');
-  });
-
   socket.on('move.start', (keyCode: number, playerId: string) => {
-    gameConsole.log('Player move start');
     if (gameState.players[playerId]) {
       gameState.players[playerId].toggleMovement(keyCode, true);
     }
   });
 
   socket.on('move.end', (keyCode: number, playerId: string) => {
-    gameConsole.log('Player move end');
     if (gameState.players[playerId]) {
       gameState.players[playerId].toggleMovement(keyCode, false);
     }
@@ -442,11 +554,16 @@ function setupEvents(): void {
   socket.on('state', (state: any) => {
     for (const key in state.zombies) {
       const serverZombie = state.zombies[key];
+      if (!serverZombie) continue;
       const clientZombie = gameState.zombies[key];
-      if (!serverZombie || !clientZombie) {
+      if (!clientZombie) {
+        // Exists on the server but not locally (missed spawn): create it.
+        addZombie(serverZombie, undefined, false);
         continue;
       }
       clientZombie.setPosition(serverZombie.position);
+      // Server is authoritative for health
+      if (typeof serverZombie.health === 'number') clientZombie.health = serverZombie.health;
       // Sync speed (can change from kill buffs, hazards, sudden death)
       if (serverZombie.speed && clientZombie.speed !== serverZombie.speed) {
         clientZombie.setSpeed(serverZombie.speed);
@@ -469,11 +586,16 @@ function setupEvents(): void {
         continue;
       }
       clientPlayer.setPosition(serverPlayer.position);
+      const scoreGain = serverPlayer.score - clientPlayer.score;
+      if (hud && scoreGain > 0) {
+        hud.floatScore(scoreGain, clientPlayer.id === gameState.myId);
+      }
       clientPlayer.setScore(serverPlayer.score);
 
       if (clientPlayer.id === gameState.myId) {
-        Score.update(serverPlayer.score);
-
+        if (camController) {
+          camController.rapidFire = !!serverPlayer.activePowerUps?.includes('rapid_fire');
+        }
         // Update active power-up display
         if (hud && serverPlayer.activePowerUps && serverPlayer.activePowerUps.length > 0) {
           hud.showPowerUp(serverPlayer.activePowerUps[0]);
@@ -489,8 +611,8 @@ function setupEvents(): void {
       const oppPlayer = opponentId ? state.players[opponentId] : null;
 
       if (myPlayer) {
-        hud.updateScore(myPlayer.score, oppPlayer?.score || 0);
-        hud.updateHP(myPlayer.hp, oppPlayer?.hp || Constants.MAX_HP);
+        hud.updateScore(myPlayer.score, oppPlayer?.score ?? 0);
+        hud.updateHP(myPlayer.hp, oppPlayer?.hp ?? Constants.MAX_HP);
       }
 
       if (state.round) {
@@ -531,7 +653,6 @@ function setupEvents(): void {
     const zombie2 = gameState.zombies[zombieId2];
     if (!zombie1 || !zombie2) return;
 
-    gameConsole.info('Collision between ' + zombie1.name + ' and ' + zombie2.name);
 
     const wc = zombie1.weaponCode || zombie2.weaponCode || 0;
     gameState.explosions.push(new Explosion(scene, zombie1.getMesh().position, wc));
@@ -539,21 +660,15 @@ function setupEvents(): void {
     if (audio) audio.play('collision');
     if (killFeed) killFeed.add(`${zombie1.name} vs ${zombie2.name}`, '#ff8800');
 
+    // Creatures are not removed here: the collision event does not say who died.
+    // The server's next `state` (which omits dead creatures) removes them.
     zombie1.health -= 1;
-    if (zombie1.health <= 0) {
-      removeZombie(zombieId1);
-    }
-
     zombie2.health -= 1;
-    if (zombie2.health <= 0) {
-      removeZombie(zombieId2);
-    }
   });
 
   socket.on('zombie.out-of-bounds', (zombieId: string, firedByPlayerId: string) => {
     const zombie = gameState.zombies[zombieId];
     if (!zombie) return;
-    gameConsole.info(zombie.name + ' has left the building!');
 
     if (killFeed) {
       const scorerName = getPlayerName(firedByPlayerId);
@@ -583,7 +698,6 @@ function setupEvents(): void {
   socket.on('weapon.set', (code: number, playerId: string) => {
     const player = gameState.players[playerId];
     if (!player) return;
-    gameConsole.info(player.name + ' switch to ' + code);
     setWeapon(player, code);
     if (audio) audio.play('weapon_switch');
   });
@@ -591,9 +705,10 @@ function setupEvents(): void {
   socket.on('player.exit', (playerId: string) => {
     const player = gameState.players[playerId];
     if (!player) return;
-    gameConsole.info('Player exited! ' + player.name);
     scene.remove(player.getMesh());
     delete gameState.players[playerId];
+    // The opponent (not me) left: wait for a replacement.
+    if (playerId !== gameState.myId && gameState.myId && hud) hud.showWaiting(true);
   });
 
   // Game lifecycle events
@@ -619,18 +734,7 @@ function setupEvents(): void {
   });
 
   socket.on('round.reset', () => {
-    for (const key in gameState.zombies) {
-      removeZombie(key);
-    }
-    for (const pid in shieldMeshes) {
-      removeShieldMesh(pid);
-    }
-    clearArenaFeatures();
-    gameState.shieldCooldownUntil = 0;
-    if (hud) {
-      hud.hideSuddenDeath();
-      hud.hidePowerUp();
-    }
+    clearRoundState();
   });
 
   socket.on('match.over', (data: any) => {
@@ -644,10 +748,7 @@ function setupEvents(): void {
     if (audio) audio.play('game_over');
     if (killFeed) killFeed.add(iWon ? 'VICTORY!' : 'DEFEAT', iWon ? '#4caf50' : '#f44336');
 
-    // Store replay for playback
-    currentReplay = data.replay || null;
-
-    // Rematch + Replay button handlers
+    // Rematch button handler
     setTimeout(() => {
       const rematchBtn = document.getElementById('rematch-btn');
       if (rematchBtn) {
@@ -657,34 +758,25 @@ function setupEvents(): void {
           if (status) status.textContent = 'Waiting for opponent...';
         });
       }
-
-      const replayBtn = document.getElementById('replay-btn');
-      if (replayBtn && currentReplay) {
-        replayBtn.addEventListener('click', () => {
-          if (currentReplay) playReplay(currentReplay);
-        });
-      }
     }, 100);
   });
 
   socket.on('game.rematch', () => {
     if (hud) hud.hideMatchOver();
-    for (const key in gameState.zombies) {
-      removeZombie(key);
-    }
-    clearArenaFeatures();
-    gameState.shieldCooldownUntil = 0;
-    if (hud) {
-      hud.hideSuddenDeath();
-      hud.hidePowerUp();
-    }
+    clearRoundState();
+  });
+
+  // The opponent left mid-game: the server reset to the lobby, so clear the leftover round state.
+  socket.on('game.reset', () => {
+    if (hud) hud.hideMatchOver();
+    clearRoundState();
   });
 
   // Shield events
   socket.on('shield.activate', (playerId: string) => {
     addShieldMesh(playerId);
     if (playerId === gameState.myId) {
-      gameState.shieldCooldownUntil = Date.now() + 15000;
+      gameState.shieldCooldownUntil = Date.now() + SHIELD_COOLDOWN_MS;
     }
     if (audio) audio.play('shield');
     if (killFeed) killFeed.add(`${getPlayerName(playerId)} activated shield!`, '#2196f3');
@@ -713,8 +805,9 @@ function setupEvents(): void {
 
   // Damage event
   socket.on('player.damage', (playerId: string, _newHp: number) => {
-    if (playerId === gameState.myId && screenShake) {
-      screenShake.trigger(8);
+    if (playerId === gameState.myId) {
+      if (screenShake) screenShake.trigger(8);
+      if (hud) hud.flashDamage();
     }
   });
 
@@ -765,7 +858,10 @@ function setupEvents(): void {
     const zombie = gameState.zombies[zombieId];
     if (zombie) {
       gameState.explosions.push(new Explosion(scene, zombie.getMesh().position, 0));
-      if (killFeed) killFeed.add(`${zombie.name} destroyed by hazard!`, '#ff4444');
+      if (killFeed && !hazardKillAnnounced) {
+        hazardKillAnnounced = true;
+        killFeed.add(`A damage zone took ${zombie.name}!`, '#ff4444');
+      }
       removeZombie(zombieId);
     }
   });
@@ -982,6 +1078,10 @@ function joinPlayer(gameId: number): void {
     window.dispatchEvent(ev);
   });
 
+  socket.on('join.error.notfound', () => {
+    window.location.href = '/';
+  });
+
   socket.emit('join.player', { gameId: gameId });
 }
 
@@ -989,6 +1089,10 @@ function joinPlayer(gameId: number): void {
  * Tells the game that a player wants to join as spectator.
  */
 function joinSpectator(gameId: number): void {
+  socket.on('join.error.notfound', () => {
+    window.location.href = '/';
+  });
+
   socket.emit('join.spectator', { gameId: gameId });
   camController = new CamController(camera, null, 0);
 
@@ -1031,10 +1135,8 @@ class ZombieHugs {
 
     const checkReady = () => {
       if (!models!.isReady()) {
-        gameConsole.log('Waiting for models...');
         setTimeout(checkReady, 1000);
       } else {
-        gameConsole.log('Models loaded');
         gameState.game = this;
         setupEvents();
         animating = true;

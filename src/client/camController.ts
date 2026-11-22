@@ -10,6 +10,9 @@ let lastShot = 0;
 const THIRD_PERSON_HEIGHT = 200;
 const THIRD_PERSON_BACK = 400;
 
+// Ignore mouse events this long after a touch (browser-synthesised)
+const SYNTH_MOUSE_MS = 500;
+
 export default class CamController {
   direction: number;
   weapon: number;
@@ -22,6 +25,11 @@ export default class CamController {
   private chargeStart: number = 0;
   private charging: boolean = false;
   onChargeUpdate: ((pct: number) => void) | null = null;
+
+  // Mirrors the server: rapid_fire halves the fire delay (set from the state broadcast).
+  rapidFire: boolean = false;
+  // Clears this frame's screen-shake offset so camera.position holds the logical position.
+  clearShake: (() => void) | null = null;
 
   // Camera mode
   private thirdPerson: boolean = false;
@@ -94,10 +102,10 @@ export default class CamController {
           selectWeapon(keyCode);
           break;
         case 81: // Q - Shield
-          if (socket) socket.emit('shield');
+          self.activateShield();
           break;
         case 69: // E - Place Wall
-          if (socket) socket.emit('place.wall', camera.position.x);
+          self.placeWall();
           break;
         case 86: // V - Toggle camera view
           if (!spectatorMode) {
@@ -111,21 +119,34 @@ export default class CamController {
       endMovement(keyEvent.keyCode);
     };
 
-    const mouseDownEvent = () => {
+    // Clicks/taps on HUD elements, buttons and modals must not fire or move.
+    const isUiTarget = (target: EventTarget | null): boolean => {
+      const el = target as Element | null;
+      return !!(el && typeof el.closest === 'function' && el.closest('button, a, input, select, textarea, .modal, [data-ui]'));
+    };
+
+    // After a touch the browser synthesises mouse events; ignore them.
+    let lastTouchTime = -Infinity;
+    const isSynthesizedMouse = () => Date.now() - lastTouchTime < SYNTH_MOUSE_MS;
+
+    const mouseDownEvent = (e: MouseEvent) => {
+      if (isSynthesizedMouse() || isUiTarget(e.target)) return;
       if (!spectatorMode) {
         self.startCharge();
       }
     };
 
-    const mouseUpEvent = () => {
+    const mouseUpEvent = (e: MouseEvent) => {
+      if (isSynthesizedMouse()) return;
+      // Only release a charge that began on the game (mousedown ignores UI targets).
       if (self.charging) {
         self.releaseCharge();
-      } else {
-        self.fire(0);
       }
     };
 
     const touchStart = (e: TouchEvent) => {
+      lastTouchTime = Date.now();
+      if (isUiTarget(e.target)) return;
       e.preventDefault();
 
       if (e.touches.length > 0) {
@@ -140,6 +161,7 @@ export default class CamController {
     };
 
     const touchEnd = (e: TouchEvent) => {
+      lastTouchTime = Date.now();
       if (self.charging) {
         self.releaseCharge();
       }
@@ -153,8 +175,8 @@ export default class CamController {
     window.addEventListener('keyup', keyUpEvent);
     window.addEventListener('mousedown', mouseDownEvent);
     window.addEventListener('mouseup', mouseUpEvent);
-    window.addEventListener('touchstart', touchStart);
-    window.addEventListener('touchend', touchEnd);
+    window.addEventListener('touchstart', touchStart, { passive: false });
+    window.addEventListener('touchend', touchEnd, { passive: false });
   }
 
   isSpectatorMode(): boolean {
@@ -172,7 +194,19 @@ export default class CamController {
     }
   }
 
+  activateShield(): void {
+    if (socket) socket.emit('shield');
+  }
+
+  placeWall(): void {
+    if (socket) {
+      this.clearShake?.();
+      socket.emit('place.wall', camera.position.x);
+    }
+  }
+
   toggleCameraMode(): void {
+    this.clearShake?.();
     this.thirdPerson = !this.thirdPerson;
     if (!this.thirdPerson) {
       // Snap back to first person
@@ -237,10 +271,11 @@ export default class CamController {
 
   fire(chargeTime: number): void {
     if (socket) {
-      const delay = Util.getWeaponDelay(this.weapon);
+      const delay = Util.getWeaponDelay(this.weapon) * (this.rapidFire ? 0.5 : 1);
       const now = new Date().getTime();
       if (now - lastShot > delay) {
         lastShot = now;
+        this.clearShake?.();
         // In 3rd person, fire from the player's actual position (firstPersonZ), not camera
         const firePos = {
           x: camera.position.x,
@@ -250,6 +285,13 @@ export default class CamController {
         socket.emit('fire', firePos, this.weapon, chargeTime);
       }
     }
+  }
+
+  /** 0..1 progress of the fire delay for a weapon since the last shot (1 = ready). */
+  getCooldownPct(code: number): number {
+    const delay = Util.getWeaponDelay(code) * (this.rapidFire ? 0.5 : 1);
+    if (delay <= 0) return 1;
+    return Math.min(1, Math.max(0, (Date.now() - lastShot) / delay));
   }
 
   update(elapsed: number): void {
@@ -281,19 +323,6 @@ export default class CamController {
       camera.position.z = curPosZ;
       camera.rotation.y = curRot;
       return;
-    } else {
-      // Reload bar
-      const delay = Util.getWeaponDelay(this.weapon);
-      const now = new Date().getTime();
-
-      const reloader = document.getElementById('reload-bar');
-      if (reloader) {
-        if (now - lastShot <= delay) {
-          reloader.style.width = ((now - lastShot) / delay) * 100 + '%';
-        } else {
-          reloader.style.width = '100%';
-        }
-      }
     }
 
     // Player lateral movement
@@ -302,6 +331,8 @@ export default class CamController {
     } else if (this.right) {
       curPosX += tr * elapsed * this.direction;
     }
+    const limit = Constants.ARENA_HALF_WIDTH - Constants.ARENA_MARGIN;
+    curPosX = Math.min(limit, Math.max(-limit, curPosX));
     camera.position.x = curPosX;
 
     // 3rd person camera positioning
