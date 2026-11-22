@@ -26,6 +26,11 @@ export default class CamController {
   private charging: boolean = false;
   onChargeUpdate: ((pct: number) => void) | null = null;
 
+  // Mirrors the server: rapid_fire halves the fire delay (set from the state broadcast).
+  rapidFire: boolean = false;
+  // Clears this frame's screen-shake offset so camera.position holds the logical position.
+  clearShake: (() => void) | null = null;
+
   // Camera mode
   private thirdPerson: boolean = false;
   private firstPersonZ: number = 0;
@@ -194,10 +199,14 @@ export default class CamController {
   }
 
   placeWall(): void {
-    if (socket) socket.emit('place.wall', camera.position.x);
+    if (socket) {
+      this.clearShake?.();
+      socket.emit('place.wall', camera.position.x);
+    }
   }
 
   toggleCameraMode(): void {
+    this.clearShake?.();
     this.thirdPerson = !this.thirdPerson;
     if (!this.thirdPerson) {
       // Snap back to first person
@@ -262,10 +271,11 @@ export default class CamController {
 
   fire(chargeTime: number): void {
     if (socket) {
-      const delay = Util.getWeaponDelay(this.weapon);
+      const delay = Util.getWeaponDelay(this.weapon) * (this.rapidFire ? 0.5 : 1);
       const now = new Date().getTime();
       if (now - lastShot > delay) {
         lastShot = now;
+        this.clearShake?.();
         // In 3rd person, fire from the player's actual position (firstPersonZ), not camera
         const firePos = {
           x: camera.position.x,
@@ -279,7 +289,7 @@ export default class CamController {
 
   /** 0..1 progress of the fire delay for a weapon since the last shot (1 = ready). */
   getCooldownPct(code: number): number {
-    const delay = Util.getWeaponDelay(code);
+    const delay = Util.getWeaponDelay(code) * (this.rapidFire ? 0.5 : 1);
     if (delay <= 0) return 1;
     return Math.min(1, Math.max(0, (Date.now() - lastShot) / delay));
   }

@@ -1,7 +1,5 @@
 import Constants from './constants';
 
-// Mirrors WALL_COST in lib/controller.ts.
-const WALL_COST = 3;
 const HINT_KEY = 'zombieHugsControlsHintSeen';
 
 // Trait text is the matchup legend (see Zombie.isCollision in lib/controller.ts).
@@ -40,6 +38,7 @@ export default class HUD {
   private pingDisplay: HTMLDivElement;
   private latencyMs: number = 0;
   private isSpectator: boolean;
+  private controlsHint: HTMLDivElement | null = null;
 
   // New feature elements
   private powerUpIndicator: HTMLDivElement;
@@ -99,12 +98,14 @@ export default class HUD {
     const myScoreSection = document.createElement('div');
     myScoreSection.innerHTML = '<span style="color:#4caf50">YOU</span>';
     this.scoreText = document.createElement('span');
+    this.scoreText.className = 'hud-score-num';
     this.scoreText.style.cssText = 'font-size: 24px; font-weight: bold; margin-left: 8px;';
     this.scoreText.textContent = '0';
     myScoreSection.appendChild(this.scoreText);
     opponentContainer.appendChild(myScoreSection);
 
     this.roundIndicator = document.createElement('div');
+    this.roundIndicator.className = 'hud-round';
     this.roundIndicator.style.cssText = 'color: #aaa; font-size: 12px; text-align: center;';
     this.roundIndicator.textContent = 'Round 1';
     opponentContainer.appendChild(this.roundIndicator);
@@ -112,6 +113,7 @@ export default class HUD {
     const oppScoreSection = document.createElement('div');
     oppScoreSection.innerHTML = '<span style="color:#f44336">OPP</span>';
     this.opponentScoreText = document.createElement('span');
+    this.opponentScoreText.className = 'hud-score-num';
     this.opponentScoreText.style.cssText = 'font-size: 24px; font-weight: bold; margin-left: 8px;';
     this.opponentScoreText.textContent = '0';
     oppScoreSection.appendChild(this.opponentScoreText);
@@ -121,6 +123,7 @@ export default class HUD {
 
     // HP mini bars
     const oppHpContainer = document.createElement('div');
+    oppHpContainer.className = 'hud-hp-mini';
     oppHpContainer.style.cssText = `
       position: fixed; top: 50px; left: 50%; transform: translateX(-50%);
       width: 300px; height: 8px; display: flex; gap: 4px;
@@ -450,11 +453,13 @@ export default class HUD {
       : 'Waiting for an opponent\u2026';
     this.waitingLink!.value = window.location.href;
     this.waitingOverlay.style.display = 'flex';
+    this.syncControlsHint();
     this.hideCountdown();
   }
 
   hideWaiting(): void {
     if (this.waitingOverlay) this.waitingOverlay.style.display = 'none';
+    this.syncControlsHint();
   }
 
   showCountdown(seconds: number): void {
@@ -477,6 +482,7 @@ export default class HUD {
 
   showRoundEnd(winnerName: string, round: number, iWon: boolean): void {
     this.gameOverOverlay.style.display = 'flex';
+    this.syncControlsHint();
     this.gameOverOverlay.innerHTML = `
       <div style="font-size: 36px; color: ${iWon ? '#4caf50' : '#f44336'};">
         ${iWon ? 'ROUND WON!' : 'ROUND LOST'}
@@ -492,6 +498,7 @@ export default class HUD {
     this.roundEndTimer = setTimeout(() => {
       this.roundEndTimer = null;
       this.gameOverOverlay.style.display = 'none';
+      this.syncControlsHint();
     }, 2500);
   }
 
@@ -517,6 +524,7 @@ export default class HUD {
     }
 
     this.gameOverOverlay.style.display = 'flex';
+    this.syncControlsHint();
     this.gameOverOverlay.innerHTML = `
       <div style="font-size: 64px; color: ${iWon ? '#4caf50' : '#f44336'}; margin-bottom: 20px;">
         ${iWon ? 'VICTORY!' : 'DEFEAT'}
@@ -558,6 +566,7 @@ export default class HUD {
   hideMatchOver(): void {
     this.cancelRoundEndTimer();
     this.gameOverOverlay.style.display = 'none';
+    this.syncControlsHint();
   }
 
   showCombo(count: number): void {
@@ -583,6 +592,14 @@ export default class HUD {
     const stars = '\u2605'.repeat(level);
     this.upgradeIndicator.textContent = `UPGRADE ${stars}`;
     this.upgradeIndicator.style.color = level >= 2 ? '#ff4444' : '#ff0';
+  }
+
+  hideUpgrade(): void {
+    this.upgradeIndicator.style.display = 'none';
+  }
+
+  hideCombo(): void {
+    this.comboText.style.display = 'none';
   }
 
   updateRound(round: number, roundWins?: Record<string, number>, myId?: string, opponentId?: string): void {
@@ -716,7 +733,14 @@ export default class HUD {
     const card = document.createElement('div');
     card.className = 'controls-hint';
     card.setAttribute('data-ui', '');
-    card.innerHTML = `
+    card.innerHTML = document.body.classList.contains('touch-hud')
+      ? `
+      <b>Controls</b><br>
+      <b>Hold</b> left / right side of the screen to move<br>
+      <b>Tap / hold</b> the middle to fire or charge<br>
+      Buttons below: creature, <b>Shield</b>, <b>Wall</b>, <b>Cam</b>
+    `
+      : `
       <b>Controls</b><br>
       <b>A / D</b> move &nbsp; <b>click / hold</b> fire or charge<br>
       <b>1-5</b> pick creature &nbsp; <b>Q</b> shield<br>
@@ -727,10 +751,20 @@ export default class HUD {
     btn.textContent = 'Got it';
     btn.addEventListener('click', () => {
       card.remove();
+      this.controlsHint = null;
       try { localStorage.setItem(HINT_KEY, '1'); } catch (e) { /* ignore */ }
     });
     card.appendChild(btn);
     this.container.appendChild(card);
+    this.controlsHint = card;
+    this.syncControlsHint();
+  }
+
+  // The hint never covers a centre overlay (waiting, round end, match over).
+  private syncControlsHint(): void {
+    if (!this.controlsHint) return;
+    const overlayOpen = (this.waitingOverlay?.style.display === 'flex') || this.gameOverOverlay.style.display === 'flex';
+    this.controlsHint.style.display = overlayOpen ? 'none' : '';
   }
 
   // Mobile control bar: 5 weapons + shield, wall, camera in one row that fits the width.
@@ -769,7 +803,7 @@ export default class HUD {
     }
     mk('mb-action mb-first', '#2196f3', 'Q', 'Shield', actions.shield);
     this.mobileShield = bar.lastElementChild as HTMLButtonElement;
-    this.mobileWall = mk('mb-action', '#ff9800', 'E', 'Wall ' + WALL_COST, actions.wall);
+    this.mobileWall = mk('mb-action', '#ff9800', 'E', 'Wall ' + Constants.WALL_COST, actions.wall);
     mk('mb-action', '#aaa', 'V', 'Cam', actions.camera);
 
     this.container.appendChild(bar);
@@ -792,6 +826,6 @@ export default class HUD {
       this.mobileShield.classList.toggle('ready', shieldReady);
       (this.mobileShield.lastElementChild as HTMLElement).style.width = (shieldReady ? 1 : shieldPct) * 100 + '%';
     }
-    if (this.mobileWall) this.mobileWall.classList.toggle('disabled', score < WALL_COST);
+    if (this.mobileWall) this.mobileWall.classList.toggle('disabled', score < Constants.WALL_COST);
   }
 }

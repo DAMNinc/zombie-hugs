@@ -57,8 +57,6 @@ const SPECTATOR_VOTE_COOLDOWN_MS = 15000;
 // Must exceed the longest fire delay (horde, 3000 ms) so Stampede (horse then horde) is reachable.
 const SYNERGY_WINDOW_MS = 3500;
 
-// Charged shot constants
-
 // ELO constants
 const ELO_K = 32;
 const ELO_DEFAULT = 1000;
@@ -85,12 +83,6 @@ interface Wall {
   width: number;
   ownerId: string;
   expiresAt: number;
-}
-
-interface ReplayEvent {
-  time: number;
-  type: string;
-  data: any;
 }
 
 interface ActivePowerUp {
@@ -182,7 +174,6 @@ class Game {
   powerUps: Record<string, PowerUp>;
   hazards: Hazard[];
   walls: Record<string, Wall>;
-  replay: ReplayEvent[];
   roundStartTime: number;
   suddenDeath: boolean;
   lastPowerUpSpawn: number;
@@ -210,7 +201,6 @@ class Game {
     this.powerUps = {};
     this.hazards = [];
     this.walls = {};
-    this.replay = [];
     this.roundStartTime = 0;
     this.suddenDeath = false;
     this.lastPowerUpSpawn = 0;
@@ -219,10 +209,6 @@ class Game {
     this.roundResetTimer = null;
     this.intervals = [];
     this.lastActivity = Date.now();
-  }
-
-  recordReplay(type: string, data: any) {
-    this.replay.push({ time: Date.now() - this.roundStartTime, type, data });
   }
 
   emitAll(...args: any[]) {
@@ -291,7 +277,6 @@ class Game {
     };
     this.powerUps[powerUp.id] = powerUp;
     this.emitAll('powerup.spawn', powerUp);
-    this.recordReplay('powerup.spawn', powerUp);
   }
 
   checkPowerUpCollisions() {
@@ -314,7 +299,6 @@ class Game {
         if (dx < POWERUP_COLLECT_RADIUS && dz < POWERUP_COLLECT_RADIUS) {
           this.applyPowerUp(player, pu);
           this.emitAll('powerup.collect', puId, player.id, pu.type);
-          this.recordReplay('powerup.collect', { id: puId, player: player.id, type: pu.type });
           delete this.powerUps[puId];
           break;
         }
@@ -365,7 +349,6 @@ class Game {
       }
 
       this.emitAll('sudden.death');
-      this.recordReplay('sudden.death', {});
     }
   }
 
@@ -383,25 +366,21 @@ class Game {
     if (weaponCode === 3 && recentCodes.includes(1)) {
       speedMult = 1.5;
       this.emitAll('synergy', player.id, 'air_strike');
-      this.recordReplay('synergy', { player: player.id, type: 'air_strike' });
     }
     // Horse + Horde = "Stampede" — extra horde creatures
     if (weaponCode === 5 && recentCodes.includes(2)) {
       extraCreatures = 3;
       this.emitAll('synergy', player.id, 'stampede');
-      this.recordReplay('synergy', { player: player.id, type: 'stampede' });
     }
     // Zombie + Horse = "Juggernaut" — extra HP
     if (weaponCode === 2 && recentCodes.includes(4)) {
       healthBonus = 2;
       this.emitAll('synergy', player.id, 'juggernaut');
-      this.recordReplay('synergy', { player: player.id, type: 'juggernaut' });
     }
     // Fox + Fox = "Twin Strike" — fires 2 foxes
     if (weaponCode === 1 && recentCodes.filter(c => c === 1).length >= 2) {
       extraCreatures = 1;
       this.emitAll('synergy', player.id, 'twin_strike');
-      this.recordReplay('synergy', { player: player.id, type: 'twin_strike' });
     }
 
     return { speedMult, healthBonus, extraCreatures };
@@ -497,7 +476,6 @@ class Game {
         const zombie = new Zombie(zombieName, pos, player.direction * -1, player.id, hp, weaponCode, spd, chargeRatio);
         this.zombies[zombie.id] = zombie;
         this.emitAll('zombie', zombie.toJSON(), player.id);
-        this.recordReplay('zombie', { zombie: zombie.toJSON(), player: player.id });
       };
 
       if (weaponCode === 5) {
@@ -552,7 +530,6 @@ class Game {
       player.shield.expiresAt = now + SHIELD_DURATION_MS;
       player.shield.cooldownUntil = now + SHIELD_COOLDOWN_MS;
       this.emitAll('shield.activate', player.id);
-      this.recordReplay('shield.activate', { player: player.id });
     });
 
     // Wall placement
@@ -576,7 +553,6 @@ class Game {
       };
       this.walls[wall.id] = wall;
       this.emitAll('wall.place', wall);
-      this.recordReplay('wall.place', wall);
     });
 
     onPlayer('ready', () => {
@@ -636,10 +612,8 @@ class Game {
         this.roundStartTime = Date.now();
         this.suddenDeath = false;
         this.lastPowerUpSpawn = 0;
-        this.replay = [];
         this.generateHazards();
         this.emitAll('game.start');
-        this.recordReplay('game.start', {});
       }
     }, 1000);
   }
@@ -665,7 +639,6 @@ class Game {
     this.walls = {};
     this.hazards = [];
     this.suddenDeath = false;
-    this.replay = [];
     this.roundWins = {};
     this.stats = {};
     for (const id in this.players) {
@@ -778,7 +751,6 @@ class Game {
             this.zombies[key].speed *= 1.5;
           }
           this.emitAll('spectator.event', 'speed_burst', spectator.name);
-          this.recordReplay('spectator.event', { type: 'speed_burst' });
           break;
         }
         case 'spawn_obstacle': {
@@ -793,7 +765,6 @@ class Game {
           this.walls[wall.id] = wall;
           this.emitAll('wall.place', wall);
           this.emitAll('spectator.event', 'spawn_obstacle', spectator.name);
-          this.recordReplay('spectator.event', { type: 'spawn_obstacle' });
           break;
         }
         case 'heal_all': {
@@ -802,7 +773,6 @@ class Game {
             this.emitAll('player.heal', pid, this.players[pid].hp);
           }
           this.emitAll('spectator.event', 'heal_all', spectator.name);
-          this.recordReplay('spectator.event', { type: 'heal_all' });
           break;
         }
       }
@@ -907,7 +877,6 @@ class Game {
         const wx = Math.abs(zombie.position.x - wall.position.x);
         if (wz < 50 && wx < wall.width / 2) {
           this.emitAll('zombie.walled', zombie.id, wId);
-          this.recordReplay('zombie.walled', { zombie: zombie.id, wall: wId });
           delete this.zombies[key];
           wallBlocked = true;
           break;
@@ -927,7 +896,6 @@ class Game {
         const xDist = Math.abs(zombie.position.x - player.position.x);
         if (zDist < 150 && xDist < 300) {
           this.emitAll('zombie.shielded', zombie.id, pid);
-          this.recordReplay('zombie.shielded', { zombie: zombie.id, player: pid });
           delete this.zombies[key];
           shieldDestroyed = true;
           break;
@@ -979,7 +947,6 @@ class Game {
         }
 
         this.emitAll('zombie.out-of-bounds', zombie.id, zombie.firedByPlayer);
-        this.recordReplay('zombie.out-of-bounds', { zombie: zombie.id, player: zombie.firedByPlayer });
         delete this.zombies[key];
 
         if (this.checkRoundEnd()) break;
@@ -994,7 +961,6 @@ class Game {
 
         if (zombie.isCollision(otherZombie)) {
           this.emitAll('zombie.collision', zombie.id, otherZombie.id);
-          this.recordReplay('zombie.collision', { a: zombie.id, b: otherZombie.id });
 
           this.zombies[key].health -= 1;
           this.zombies[otherKey].health -= 1;
@@ -1085,7 +1051,6 @@ class Game {
         loser: roundLoser,
         roundWins: this.roundWins,
         stats: this.stats,
-        replay: this.replay,
         elo: {
           [roundWinner]: getElo(winnerName),
           [roundLoser]: getElo(loserName),

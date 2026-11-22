@@ -30,6 +30,8 @@ let animating = false;
 let hud: HUD | null = null;
 let audio: Audio | null = null;
 let screenShake: ScreenShake | null = null;
+// Mirrors SHIELD_COOLDOWN_MS in lib/controller.ts.
+const SHIELD_COOLDOWN_MS = 15000;
 let killFeed: KillFeed | null = null;
 let shieldMeshes: Record<string, any> = {};
 let pingStart: number = 0;
@@ -83,7 +85,7 @@ function updateGameState(elapsed: number): void {
     const now = Date.now();
     const cooldownEnd = gameState.shieldCooldownUntil || 0;
     const shieldReady = now >= cooldownEnd;
-    const shieldPct = shieldReady ? 1 : 1 - ((cooldownEnd - now) / 15000);
+    const shieldPct = shieldReady ? 1 : 1 - ((cooldownEnd - now) / SHIELD_COOLDOWN_MS);
     hud.updateShieldCooldown(shieldReady, shieldPct);
     hud.updateMobileBar(camController.weapon, (c) => camController!.getCooldownPct(c), shieldReady, shieldPct);
   }
@@ -444,6 +446,24 @@ function removeWallMesh(id: string): void {
   }
 }
 
+// Everything the server resets between rounds, rematches and when the opponent leaves.
+function clearRoundState(): void {
+  for (const key in gameState.zombies) {
+    removeZombie(key);
+  }
+  for (const pid in shieldMeshes) {
+    removeShieldMesh(pid);
+  }
+  clearArenaFeatures();
+  gameState.shieldCooldownUntil = 0;
+  if (hud) {
+    hud.hideSuddenDeath();
+    hud.hidePowerUp();
+    hud.hideUpgrade();
+    hud.hideCombo();
+  }
+}
+
 function clearArenaFeatures(): void {
   for (const id in powerUpMeshes) removePowerUpMesh(id);
   for (const id in wallMeshes) removeWallMesh(id);
@@ -476,13 +496,13 @@ function setupEvents(): void {
     }
 
     camController = new CamController(camera, socket, player.direction);
+    camController.clearShake = () => screenShake?.clear();
 
     // Weapon bar (desktop), mobile weapon buttons, one-time controls hint
     if (hud) {
       hud.createWeaponBar((code: number) => {
         if (camController) camController.selectWeaponByCode(code);
       });
-      hud.showControlsHint();
       hud.createMobileWeaponButtons((code: number) => {
         if (camController) {
           camController.selectWeaponByCode(code);
@@ -492,6 +512,8 @@ function setupEvents(): void {
         wall: () => camController?.placeWall(),
         camera: () => camController?.toggleCameraMode(),
       });
+      // After the mobile bar, so the hint knows whether the touch HUD is active.
+      hud.showControlsHint();
     }
 
     // Alone in the lobby until an opponent shows up.
@@ -515,10 +537,6 @@ function setupEvents(): void {
     }
 
     socket.emit('ready');
-  });
-
-  // Event for receiving spectator information from the server.
-  socket.on('spectator', (_player: any) => {
   });
 
   socket.on('move.start', (keyCode: number, playerId: string) => {
@@ -575,6 +593,9 @@ function setupEvents(): void {
       clientPlayer.setScore(serverPlayer.score);
 
       if (clientPlayer.id === gameState.myId) {
+        if (camController) {
+          camController.rapidFire = !!serverPlayer.activePowerUps?.includes('rapid_fire');
+        }
         // Update active power-up display
         if (hud && serverPlayer.activePowerUps && serverPlayer.activePowerUps.length > 0) {
           hud.showPowerUp(serverPlayer.activePowerUps[0]);
@@ -713,18 +734,7 @@ function setupEvents(): void {
   });
 
   socket.on('round.reset', () => {
-    for (const key in gameState.zombies) {
-      removeZombie(key);
-    }
-    for (const pid in shieldMeshes) {
-      removeShieldMesh(pid);
-    }
-    clearArenaFeatures();
-    gameState.shieldCooldownUntil = 0;
-    if (hud) {
-      hud.hideSuddenDeath();
-      hud.hidePowerUp();
-    }
+    clearRoundState();
   });
 
   socket.on('match.over', (data: any) => {
@@ -753,42 +763,20 @@ function setupEvents(): void {
 
   socket.on('game.rematch', () => {
     if (hud) hud.hideMatchOver();
-    for (const key in gameState.zombies) {
-      removeZombie(key);
-    }
-    for (const pid in shieldMeshes) {
-      removeShieldMesh(pid);
-    }
-    clearArenaFeatures();
-    gameState.shieldCooldownUntil = 0;
-    if (hud) {
-      hud.hideSuddenDeath();
-      hud.hidePowerUp();
-    }
+    clearRoundState();
   });
 
   // The opponent left mid-game: the server reset to the lobby, so clear the leftover round state.
   socket.on('game.reset', () => {
     if (hud) hud.hideMatchOver();
-    for (const key in gameState.zombies) {
-      removeZombie(key);
-    }
-    for (const pid in shieldMeshes) {
-      removeShieldMesh(pid);
-    }
-    clearArenaFeatures();
-    gameState.shieldCooldownUntil = 0;
-    if (hud) {
-      hud.hideSuddenDeath();
-      hud.hidePowerUp();
-    }
+    clearRoundState();
   });
 
   // Shield events
   socket.on('shield.activate', (playerId: string) => {
     addShieldMesh(playerId);
     if (playerId === gameState.myId) {
-      gameState.shieldCooldownUntil = Date.now() + 15000;
+      gameState.shieldCooldownUntil = Date.now() + SHIELD_COOLDOWN_MS;
     }
     if (audio) audio.play('shield');
     if (killFeed) killFeed.add(`${getPlayerName(playerId)} activated shield!`, '#2196f3');
