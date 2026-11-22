@@ -219,6 +219,7 @@ body.touch-hud .hud-charge {
   transform: none !important;
   width: 120px !important;
 }
+body.touch-hud.brawl-targets .controls-hint { bottom: 235px; }
 body.touch-hud .controls-hint { bottom: 150px; max-width: 260px; font-size: 11px; line-height: 1.5; padding: 8px 12px; }
 /* Phone score panel: smaller text, round on one line, HP bars below the panel */
 body.touch-hud #opponent-hud { gap: 10px; padding: 4px 10px; font-size: 12px; top: 6px; }
@@ -229,3 +230,75 @@ body.touch-hud .hud-desktop-only { display: none !important; }
 @media (max-width: 700px) {
   body.touch-hud .weapon-bar { display: none; }
 }
+
+/* ---- Room lobby (src/client/lobby.ts) ---- */
+.lobby-panel {
+  position: fixed; top: 14%; left: 50%; transform: translateX(-50%);
+  width: min(440px, calc(100% - 24px)); box-sizing: border-box; z-index: 20;
+  flex-direction: column; gap: 10px; padding: 14px;
+  background: rgba(0, 0, 0, 0.8); border: 2px solid #555; border-radius: 8px;
+  color: #fff; font-family: monospace; pointer-events: auto;
+}
+.lobby-title { font-size: 20px; font-weight: bold; color: #ffcc00; text-align: center; text-shadow: 1px 1px 2px #000; }
+.lobby-waiting { font-size: 12px; color: #f0c040; text-align: center; overflow-wrap: anywhere; line-height: 1.35; }
+.lobby-hint { font-size: 12px; color: #bbb; text-align: center; min-height: 15px; }
+.lobby-seats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lobby-seat {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 10px;
+  background: #1c1c1c; border: 2px solid #333; border-radius: 6px;
+}
+.lobby-seat-open { border-style: dashed; color: #888; }
+.lobby-seat-me { border-color: #ffcc00; background: #2a2614; }
+.lobby-badge {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: bold; font-size: 15px; color: #000; text-shadow: none; border: 2px solid rgba(255, 255, 255, 0.7);
+  background: #444;
+}
+.lobby-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.lobby-status { font-size: 12px; color: #aaa; white-space: nowrap; }
+.lobby-status-open { flex: 1; font-size: 13px; }
+.lobby-status.is-ready { color: #4caf50; font-weight: bold; }
+.lobby-status.not-ready { color: #ff9800; }
+.lobby-btn {
+  min-height: 44px; padding: 10px 14px; font: bold 14px monospace; color: #fff; cursor: pointer;
+  background: #4caf50; border: none; border-radius: 4px; touch-action: manipulation;
+}
+.lobby-btn:disabled { opacity: 0.5; cursor: default; }
+.lobby-ready { font-size: 18px; }
+.lobby-ready.lobby-ready-on { background: #666; }
+.lobby-invite-label { font-size: 11px; color: #888; margin-bottom: -6px; }
+.lobby-linkrow { display: flex; gap: 8px; }
+.lobby-link {
+  flex: 1; min-width: 0; min-height: 44px; padding: 8px; font: 13px monospace; color: #fff;
+  background: #222; border: 1px solid #555; border-radius: 4px; box-sizing: border-box;
+}
+.lobby-copy { background: #2196f3; }
+.lobby-banner {
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 20;
+  width: max-content; max-width: calc(100% - 24px); box-sizing: border-box; text-align: center;
+  padding: 10px 16px; border-radius: 6px; background: rgba(0, 0, 0, 0.8); border: 2px solid #ffcc00;
+  color: #ffcc00; font: bold 14px monospace; pointer-events: none;
+}
+.lobby-end {
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 20;
+  max-width: calc(100% - 24px); background: rgba(60, 60, 60, 0.9); font-size: 12px; pointer-events: auto;
+}
+.lobby-end.lobby-end-urgent { background: #d55e00; font-size: 14px; }
+.lobby-notices {
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 20; flex-direction: column; gap: 4px; margin-top: 56px;
+  align-items: center; max-width: calc(100% - 24px); pointer-events: none;
+}
+.lobby-notice { padding: 6px 12px; border-radius: 5px; background: rgba(0, 0, 0, 0.8); border: 1px solid #ff9800; color: #ff9800; font: 13px monospace; }
+@media (max-width: 480px) {
+  .lobby-panel { top: 76px; padding: 10px; gap: 8px; }
+  .lobby-title { font-size: 17px; }
+}
+
+/* A queued spectator joined through join.player, so hide the player-only HUD until promoted. */
+body.queued-spectator .hud-lift,
+body.queued-spectator #opponent-hud,
+body.queued-spectator .hud-hp-mini,
+body.queued-spectator .hud-charge,
+body.queued-spectator .weapon-bar,
+body.queued-spectator .mobile-bar,
+body.queued-spectator .controls-hint { display: none !important; }

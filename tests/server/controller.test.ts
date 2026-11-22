@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  Game, Zombie, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard,
+  Game, Zombie, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard, RECONNECT_WINDOW_MS,
 } from '../../lib/controller';
 import { makePlayer, makeGameWithTwoPlayers, startPlaying } from './helpers';
 
@@ -63,12 +63,19 @@ describe('joining', () => {
     expect(game.phase).toBe('lobby');
   });
 
-  it('rejects a third player as full', () => {
+  it('seats a third player (rooms hold four) and queues a fifth', () => {
     const { game } = makeGameWithTwoPlayers();
     const c = makePlayer('c');
+    const d = makePlayer('d');
+    const e = makePlayer('e');
     game.joinPlayer(c.player);
-    expect(c.socket.events('join.error.full')).toHaveLength(1);
-    expect(game.players['c']).toBeUndefined();
+    game.joinPlayer(d.player);
+    game.joinPlayer(e.player);
+    expect(game.players['c'].seat).toBe(2);
+    expect(game.players['d'].seat).toBe(3);
+    expect(game.players['e']).toBeUndefined();
+    expect(e.socket.events('join.queued')[0].args[0]).toEqual({ position: 1 });
+    expect(c.socket.events('join.error.full')).toHaveLength(0);
   });
 
   it('adds a spectator who receives opponents, hazards and broadcasts', () => {
@@ -91,14 +98,15 @@ describe('ready and countdown', () => {
     expect(game.phase).toBe('lobby');
   });
 
-  it('a lone ready player stays in the lobby (no solo match)', () => {
+  it('a lone ready player starts a solo match against a bot (was: stayed in the lobby)', () => {
     const game = new Game(1, 'test');
     const a = makePlayer('a', 'solo-a', -1000, -1);
     game.joinPlayer(a.player);
     a.socket.trigger('ready');
-    vi.advanceTimersByTime(10000);
-    expect(game.phase).toBe('lobby');
-    expect(a.socket.events('game.countdown')).toHaveLength(0);
+    expect(game.phase).toBe('countdown');
+    expect(game.mode).toBe('solo');
+    vi.advanceTimersByTime(3000);
+    expect(game.phase).toBe('playing');
   });
 
   it('the second player joining and readying starts the countdown', () => {
@@ -106,11 +114,12 @@ describe('ready and countdown', () => {
     const a = makePlayer('a', 'two-a', -1000, -1);
     const b = makePlayer('b', 'two-b', 1000, 1);
     game.joinPlayer(a.player);
-    a.socket.trigger('ready');
     game.joinPlayer(b.player);
+    a.socket.trigger('ready');
     expect(game.phase).toBe('lobby');
     b.socket.trigger('ready');
     expect(game.phase).toBe('countdown');
+    expect(game.mode).toBe('duel');
   });
 
   it('counts down 3,2,1 then starts playing after 3s', () => {
@@ -209,7 +218,7 @@ describe('scoring and damage', () => {
     expect(b.player.hp).toBe(9);
     expect(Object.keys(game.zombies)).toHaveLength(0);
     expect(game.stats['a'].zombiesScored).toBe(1);
-    expect(b.socket.events('player.damage')[0].args).toEqual(['b', 9]);
+    expect(b.socket.events('player.damage')[0].args).toEqual(['b', 9, 'a']);
   });
 
   it('quick consecutive scores build combo bonus; double_points doubles', () => {
@@ -342,11 +351,14 @@ describe('player exit', () => {
   });
 
 
-  it('checkPing removes players that stopped pinging', () => {
+  it('checkPing drops players that stopped pinging once the reconnect window passes', () => {
     const { game, a, b } = startPlaying();
     vi.advanceTimersByTime(5000);
     b.socket.trigger('pingpong');
     game.checkPing();
+    expect(game.players['a'].connected).toBe(false);
+    vi.advanceTimersByTime(RECONNECT_WINDOW_MS);
+    b.socket.trigger('pingpong');
     expect(game.players['a']).toBeUndefined();
     expect(game.players['b']).toBeDefined();
   });

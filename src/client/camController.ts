@@ -1,5 +1,6 @@
 import Constants from './constants';
 import Util from './util';
+import { EdgeView, edgeView } from './arena';
 
 let camera: any = null;
 let socket: any = null;
@@ -14,7 +15,6 @@ const THIRD_PERSON_BACK = 400;
 const SYNTH_MOUSE_MS = 500;
 
 export default class CamController {
-  direction: number;
   weapon: number;
   left: boolean;
   right: boolean;
@@ -33,21 +33,27 @@ export default class CamController {
 
   // Camera mode
   private thirdPerson: boolean = false;
-  private firstPersonZ: number = 0;
+  // Coordinate of the player's edge line on the fixed axis (z for N/S, x for W/E).
+  private fixedCoord: number = 0;
+  private view: EdgeView;
+  /** Called for T / Tab (desktop target cycling); set by the game when brawl targeting is active. */
+  onCycleTarget: (() => void) | null = null;
 
-  constructor(cam: any, sock: any, direction: number) {
+  constructor(cam: any, sock: any, direction: number, view?: EdgeView) {
     camera = cam;
     socket = sock;
 
     spectatorMode = !sock;
 
-    this.direction = direction;
     this.weapon = Constants.FOX;
     this.left = false;
     this.right = false;
     this.forward = false;
     this.backward = false;
-    this.firstPersonZ = camera.position.z;
+    this.view = view || edgeView(direction === -1 ? 'N' : 'S');
+    // YXZ keeps yaw and pitch independent for every edge.
+    camera.rotation.order = 'YXZ';
+    this.fixedCoord = this.view.fixedAxis === 'z' ? camera.position.z : camera.position.x;
 
     const self = this;
 
@@ -72,6 +78,10 @@ export default class CamController {
     };
 
     const keyDownEvent = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.keyCode === 9 && self.onCycleTarget) {
+        keyEvent.preventDefault(); // Tab cycles the target instead of moving focus
+        return;
+      }
       startMovement(keyEvent.keyCode);
 
       if (keyEvent.keyCode === 32 && !self.charging && socket) {
@@ -100,6 +110,10 @@ export default class CamController {
         case 100:
         case 101:
           selectWeapon(keyCode);
+          break;
+        case 84: // T - next target (brawl)
+        case 9: // Tab
+          if (!spectatorMode && self.onCycleTarget) self.onCycleTarget();
           break;
         case 81: // Q - Shield
           self.activateShield();
@@ -171,12 +185,28 @@ export default class CamController {
       }
     };
 
+    this.removeListeners = () => {
+      window.removeEventListener('keydown', keyDownEvent);
+      window.removeEventListener('keyup', keyUpEvent);
+      window.removeEventListener('mousedown', mouseDownEvent);
+      window.removeEventListener('mouseup', mouseUpEvent);
+      window.removeEventListener('touchstart', touchStart);
+      window.removeEventListener('touchend', touchEnd);
+    };
     window.addEventListener('keydown', keyDownEvent);
     window.addEventListener('keyup', keyUpEvent);
     window.addEventListener('mousedown', mouseDownEvent);
     window.addEventListener('mouseup', mouseUpEvent);
     window.addEventListener('touchstart', touchStart, { passive: false });
     window.addEventListener('touchend', touchEnd, { passive: false });
+  }
+
+  private removeListeners: () => void = () => {};
+
+  /** Detach all window input listeners (call before replacing this controller). */
+  dispose(): void {
+    this.removeListeners();
+    this.removeListeners = () => {};
   }
 
   isSpectatorMode(): boolean {
@@ -201,7 +231,7 @@ export default class CamController {
   placeWall(): void {
     if (socket) {
       this.clearShake?.();
-      socket.emit('place.wall', camera.position.x);
+      socket.emit('place.wall', this.lateralPos());
     }
   }
 
@@ -210,15 +240,26 @@ export default class CamController {
     this.thirdPerson = !this.thirdPerson;
     if (!this.thirdPerson) {
       // Snap back to first person
-      camera.position.z = this.firstPersonZ;
+      camera.position[this.view.fixedAxis] = this.fixedCoord;
       camera.position.y = 0;
-      camera.rotation.x = 0;
-      if (this.direction === -1) {
-        camera.rotation.y = Math.PI;
-      } else {
-        camera.rotation.y = 0;
-      }
+      camera.rotation.set(0, this.view.yaw, 0);
     }
+  }
+
+  private lateralPos(): number {
+    return camera.position[this.view.lateral];
+  }
+
+  /** Move the player to another edge/arena: camera on the edge line at `lateral`, looking at the centre. */
+  setView(view: EdgeView, lateral: number): void {
+    this.clearShake?.();
+    this.view = view;
+    this.fixedCoord = view.fixed;
+    this.thirdPerson = false;
+    camera.position[view.fixedAxis] = view.fixed;
+    camera.position[view.lateral] = lateral;
+    camera.position.y = 0;
+    camera.rotation.set(0, view.yaw, 0);
   }
 
   private startCharge(): void {
@@ -276,12 +317,10 @@ export default class CamController {
       if (now - lastShot > delay) {
         lastShot = now;
         this.clearShake?.();
-        // In 3rd person, fire from the player's actual position (firstPersonZ), not camera
-        const firePos = {
-          x: camera.position.x,
-          y: 0,
-          z: this.firstPersonZ,
-        };
+        // In 3rd person, fire from the player's actual position (the edge line), not the camera
+        const firePos = this.view.fixedAxis === 'z'
+          ? { x: camera.position.x, y: 0, z: this.fixedCoord }
+          : { x: this.fixedCoord, y: 0, z: camera.position.z };
         socket.emit('fire', firePos, this.weapon, chargeTime);
       }
     }
@@ -325,27 +364,24 @@ export default class CamController {
       return;
     }
 
-    // Player lateral movement
+    // Player lateral movement: left/right are relative to the player's own view
+    const v = this.view;
+    const axisRight = v.lateral === 'x' ? v.right.x : v.right.z;
+    let lateral = camera.position[v.lateral];
     if (this.left) {
-      curPosX -= tr * elapsed * this.direction;
+      lateral -= tr * elapsed * axisRight;
     } else if (this.right) {
-      curPosX += tr * elapsed * this.direction;
+      lateral += tr * elapsed * axisRight;
     }
-    const limit = Constants.ARENA_HALF_WIDTH - Constants.ARENA_MARGIN;
-    curPosX = Math.min(limit, Math.max(-limit, curPosX));
-    camera.position.x = curPosX;
+    lateral = Math.min(v.limit, Math.max(-v.limit, lateral));
+    camera.position[v.lateral] = lateral;
 
     // 3rd person camera positioning
     if (this.thirdPerson) {
       // Camera behind and above the player, looking down at the arena
-      camera.position.z = this.firstPersonZ + THIRD_PERSON_BACK * this.direction;
+      camera.position[v.fixedAxis] = this.fixedCoord - (v.fixedAxis === 'z' ? v.inward.z : v.inward.x) * THIRD_PERSON_BACK;
       camera.position.y = THIRD_PERSON_HEIGHT;
-      if (this.direction === -1) {
-        // Rotated 180 on Y, so X tilt must be positive to look down
-        camera.rotation.set(0.35, Math.PI, 0);
-      } else {
-        camera.rotation.set(-0.35, 0, 0);
-      }
+      camera.rotation.set(-0.35, v.yaw, 0);
     }
   }
 }

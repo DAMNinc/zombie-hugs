@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Socket } from 'socket.io';
-import controller, { Game, Zombie } from '../../lib/controller';
+import controller, { Game, Zombie, RECONNECT_WINDOW_MS } from '../../lib/controller';
 import { FakeSocket, makePlayer, makeGameWithTwoPlayers, startPlaying } from './helpers';
 
 vi.mock('../../lib/logger', () => ({
@@ -56,7 +56,7 @@ describe('handlers after exit (A8)', () => {
     vi.advanceTimersByTime(5000);
     b.socket.trigger('pingpong');
     game.checkPing();
-    expect(game.players['a']).toBeUndefined();
+    expect(game.players['a'].connected).toBe(false);
     fire(a.socket);
     expect(Object.keys(game.zombies)).toHaveLength(0);
   });
@@ -78,7 +78,7 @@ describe('leaving resets to lobby (A9, B5)', () => {
     b.socket.trigger('ready');
     expect(game.phase).toBe('countdown');
     vi.advanceTimersByTime(1000);
-    a.socket.trigger('disconnect');
+    a.socket.trigger('exit'); // an explicit exit frees the seat at once (a dropped socket gets the reconnect window)
     expect(game.phase).toBe('lobby');
     expect(game.countdownTimer).toBeNull();
     vi.advanceTimersByTime(10000);
@@ -91,7 +91,7 @@ describe('leaving resets to lobby (A9, B5)', () => {
     const z = new Zombie('z', { x: 0, y: 0, z: 0 }, 1, 'a', 1, 2, 300);
     game.zombies[z.id] = z;
     game.powerUps['p'] = { id: 'p', type: 'heal', position: { x: 0, y: 0, z: 0 }, expiresAt: Date.now() + 1000 };
-    game.walls['w'] = { id: 'w', position: { x: 0, y: 0, z: 0 }, width: 1, ownerId: 'b', expiresAt: Date.now() + 1000 };
+    game.walls['w'] = { id: 'w', position: { x: 0, y: 0, z: 0 }, width: 1, axis: 'x', ownerId: 'b', expiresAt: Date.now() + 1000 };
     game.round = 2;
     game.roundWins['b'] = 1;
     game.stats['a'].zombiesFired = 5;
@@ -110,7 +110,7 @@ describe('leaving resets to lobby (A9, B5)', () => {
     expect(game.stats['b'].zombiesFired).toBe(0);
     expect(b.player.score).toBe(0);
     expect(b.player.hp).toBe(10);
-    expect(b.player.ready).toBe(true);
+    expect(b.player.ready).toBe(false); // everyone readies again from the lobby
     expect(game.phase).toBe('lobby');
     expect(b.socket.events('game.reset')).toHaveLength(1);
   });
@@ -121,7 +121,7 @@ describe('leaving resets to lobby (A9, B5)', () => {
     expect(game.checkRoundEnd()).toBe(true);
     expect(game.phase).toBe('round_over');
     expect(game.roundResetTimer).not.toBeNull();
-    a.socket.trigger('disconnect');
+    a.socket.trigger('exit');
     expect(game.roundResetTimer).toBeNull();
     vi.advanceTimersByTime(10000);
     expect(game.phase).toBe('lobby');
@@ -136,18 +136,49 @@ describe('leaving resets to lobby (A9, B5)', () => {
     expect(game.phase).toBe('match_over');
 
     a.socket.trigger('disconnect');
+    vi.advanceTimersByTime(RECONNECT_WINDOW_MS);
     expect(game.phase).toBe('lobby');
     expect(game.roundWins).toEqual({ b: 0 });
 
     const c = makePlayer('c', 'newcomer', -1000, -1);
     game.joinPlayer(c.player);
-    // b does not send 'ready' again: only the newcomer does.
+    // the remaining player has to ready again too (the lobby Ready button)
     c.socket.trigger('ready');
+    expect(game.phase).toBe('lobby');
+    b.socket.trigger('ready');
     expect(game.phase).toBe('countdown');
     vi.advanceTimersByTime(3000);
     expect(game.phase).toBe('playing');
     expect(game.round).toBe(1);
     expect(c.player.score).toBe(0);
+  });
+
+  it('a socket that drops during the countdown and stays gone past the window resets the room', () => {
+    const { game, a, b } = makeGameWithTwoPlayers();
+    a.socket.trigger('ready');
+    b.socket.trigger('ready');
+    vi.advanceTimersByTime(1000);
+    a.socket.trigger('disconnect');
+    expect(game.players['a'].connected).toBe(false);
+    vi.advanceTimersByTime(RECONNECT_WINDOW_MS);
+    expect(game.players['a']).toBeUndefined();
+    expect(game.phase).toBe('lobby');
+    expect(game.countdownTimer).toBeNull();
+    expect(game.players['b'].disconnectTimer).toBeNull();
+  });
+
+  it('a socket that drops during round_over and stays gone past the window resets the room', () => {
+    const { game, a, b } = startPlaying();
+    a.player.hp = 0;
+    expect(game.checkRoundEnd()).toBe(true);
+    a.socket.trigger('disconnect');
+    vi.advanceTimersByTime(RECONNECT_WINDOW_MS);
+    expect(game.players['a']).toBeUndefined();
+    expect(game.phase).toBe('lobby');
+    expect(game.roundResetTimer).toBeNull();
+    expect(game.countdownTimer).toBeNull();
+    vi.advanceTimersByTime(10000);
+    expect(game.phase).toBe('lobby');
   });
 
   it('no forfeit: leaving awards no round win and no ELO change', () => {

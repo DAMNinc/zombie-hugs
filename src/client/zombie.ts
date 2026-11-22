@@ -11,7 +11,16 @@ import HUD from './hud';
 import Audio from './audio';
 import ScreenShake from './screenshake';
 import KillFeed from './killfeed';
+import { attackerAngle, hitLine, StandingRow } from './brawlModel';
 import EasterEggs, { rareScore, RARE_SCORE_COLOR } from './easterEggs';
+import Lobby from './lobby';
+import PlayerTag from './playerTag';
+import TargetUI from './targetUI';
+import {
+  playerYaw, ArenaKind, Edge, EdgeView, SEAT_EDGES, SQUARE_HALF, EDGE_TRAVEL, arenaFromState, creatureYaw, cycleTarget,
+  edgePoint, headingOf, isEdge, lateralOf, opponentsInOrder, resolveEdge, seatColor, viewFor,
+} from './arena';
+import { seatTokenKey } from './lobbyModel';
 import { disposeObject } from './dispose';
 import { parseLegacyJSON } from './LegacyJSONLoader';
 
@@ -37,7 +46,26 @@ let killFeed: KillFeed | null = null;
 let easterEggs: EasterEggs | null = null;
 let shieldMeshes: Record<string, any> = {};
 let pingStart: number = 0;
+let lobby: Lobby | null = null;
+let seatKey: string | null = null; // sessionStorage key of this tab's seat token (players only)
+let spectatorGameId: number | null = null; // set when this tab joined as a plain spectator
+let queued = false; // seated-player join answered with join.queued: spectating until promoted
+let arena: ArenaKind = 'lane';
+let laneGroup: THREE.Group | null = null;
+let squareGroup: THREE.Group | null = null;
+const edgeParts: Partial<Record<Edge, { line: THREE.Mesh; glow: THREE.Mesh; ticks: THREE.Mesh[] }>> = {};
+const playerTags: Record<string, PlayerTag> = {};
+let targetUI: TargetUI | null = null;
+let matchPhase = '';
+let spectatorOverview = false;
 const socket = io();
+
+function readSeatToken(): string | undefined {
+  try { return (seatKey && sessionStorage.getItem(seatKey)) || undefined; } catch (_e) { return undefined; }
+}
+function storeSeatToken(token: string): void {
+  try { if (seatKey) sessionStorage.setItem(seatKey, token); } catch (_e) { /* private mode: no reconnect token */ }
+}
 
 // New feature state
 let hazardMeshes: any[] = [];
@@ -91,6 +119,8 @@ function updateGameState(elapsed: number): void {
     hud.updateShieldCooldown(shieldReady, shieldPct);
     hud.updateMobileBar(camController.weapon, (c) => camController!.getCooldownPct(c), shieldReady, shieldPct);
   }
+
+  updateBrawlVisuals();
 
   // Pulse hazards
   const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 250);
@@ -148,8 +178,8 @@ function getZombieModelFromCode(code: number): any {
   return zombieModel || models!.getZombie();
 }
 
-function createFoxFromModel(direction: number, position: any, model: any, name?: string, weaponCode?: number, health?: number, speed?: number): Fox {
-  const fox = new Fox(direction, model, name, weaponCode, health, speed);
+function createFoxFromModel(heading: { x: number; z: number }, position: any, model: any, name?: string, weaponCode?: number, health?: number, speed?: number): Fox {
+  const fox = new Fox(heading.z < 0 ? -1 : 1, model, name, weaponCode, health, speed, heading);
 
   fox.foxObj.mesh.position.x = position.x + model.offset.x;
   fox.foxObj.mesh.position.y = position.y - 50 + model.offset.y;
@@ -157,11 +187,11 @@ function createFoxFromModel(direction: number, position: any, model: any, name?:
 
   // Store baseX for zigzag
   fox.baseX = position.x;
+  fox.baseZ = position.z;
+  fox.squareArena = arena === 'square';
 
-  // Rotate 180 degrees to face away from player.
-  if (direction === -1) {
-    fox.foxObj.mesh.rotation.y = Math.PI;
-  }
+  // Face the heading (duel: 0 or 180 degrees, as before).
+  fox.foxObj.mesh.rotation.y = creatureYaw(heading);
 
   // Horde creatures are smaller
   if (weaponCode === Constants.HORDE) {
@@ -179,12 +209,13 @@ function setWeapon(player: Player, code: number): void {
     y: player.getMesh().position.y,
     z: player.getMesh().position.z,
   };
-  startPosition.z += player.getDirection() * -1 * 100;
+  const v = player.view;
+  startPosition.z += v.inward.z * 100 - v.right.z * 25;
   startPosition.y += 50;
-  startPosition.x += player.getDirection() * -1 * 25;
+  startPosition.x += v.inward.x * 100 - v.right.x * 25;
 
   // Build the new mesh first so a failure never leaves the player without a weapon.
-  const fox = createFoxFromModel(player.getDirection() * -1, startPosition, zombieModel);
+  const fox = createFoxFromModel(v.inward, startPosition, zombieModel);
   fox.setSpeed(0);
   const s = 0.25 * (zombieModel.scale || 1);
   fox.getMesh().scale.set(s, s, s);
@@ -213,11 +244,11 @@ function getRingGeometry(): THREE.RingGeometry {
   return ringGeometry;
 }
 
-function getRingMaterial(mine: boolean): THREE.MeshBasicMaterial {
-  const key = mine ? 'mine' : 'opp';
+function getRingMaterial(mine: boolean, seatHex?: string): THREE.MeshBasicMaterial {
+  const key = seatHex || (mine ? 'mine' : 'opp');
   if (!ringMaterials[key]) {
     const m = new THREE.MeshBasicMaterial({
-      color: mine ? OWN_COLOR : OPP_COLOR,
+      color: seatHex ? new THREE.Color(seatHex) : (mine ? OWN_COLOR : OPP_COLOR),
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.85,
@@ -234,7 +265,7 @@ function addZombie(zombie: any, playerId: string | undefined, playSound: boolean
   const weaponCode = zombie.weaponCode || (playerId && gameState.players[playerId]?.getWeaponCode()) || 1;
   const zombieModel = getZombieModelFromCode(weaponCode);
 
-  const fox = createFoxFromModel(zombie.direction, zombie.position, zombieModel, zombie.name, weaponCode, zombie.health, zombie.speed);
+  const fox = createFoxFromModel(headingOf(zombie), zombie.position, zombieModel, zombie.name, weaponCode, zombie.health, zombie.speed);
   if (zombieModel.scale) {
     const s = zombieModel.scale;
     fox.getMesh().scale.set(s, s, s);
@@ -254,15 +285,18 @@ function addZombie(zombie: any, playerId: string | undefined, playSound: boolean
 
   // Owner tint: a ring under the creature, green for mine and red for the opponent's.
   // The state payload has no owner, so fall back to the direction (creatures move against their owner's side).
-  let ownerId = playerId;
-  if (!ownerId) {
+  let ownerId = playerId || (typeof zombie.ownerId === 'string' ? zombie.ownerId : undefined);
+  if (!ownerId && arena === 'lane') {
     for (const pid in gameState.players) {
       if (gameState.players[pid].direction === -zombie.direction) ownerId = pid;
     }
   }
   if (ownerId) {
     const mesh = fox.getMesh();
-    const ring = new THREE.Mesh(getRingGeometry(), getRingMaterial(ownerId === gameState.myId));
+    const ring = new THREE.Mesh(getRingGeometry(), getRingMaterial(
+      ownerId === gameState.myId,
+      arena === 'square' ? gameState.players[ownerId]?.color : undefined,
+    ));
     ring.name = 'owner-ring';
     // Undo the creature's scale so the ring has the same world size for every type.
     const k = 1 / (mesh.scale.x || 1);
@@ -285,6 +319,10 @@ function addZombie(zombie: any, playerId: string | undefined, playSound: boolean
 }
 
 function getOpponentId(): string | null {
+  if (arena === 'square') {
+    const t = gameState.players[gameState.myId]?.targetId;
+    if (t && gameState.players[t]) return t;
+  }
   for (const key in gameState.players) {
     if (key !== gameState.myId) return key;
   }
@@ -337,6 +375,20 @@ function addPowerUpMesh(powerUp: any): void {
   const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(powerUp.position.x, 20, powerUp.position.z);
+  if (powerUp.central) {
+    // The central power-up is bigger and glows: a halo and a light beam so it reads from every edge.
+    mesh.userData.central = true;
+    mesh.scale.setScalar(3);
+    const halo = new THREE.Mesh(
+      new THREE.SphereGeometry(40, 16, 12),
+      new THREE.MeshBasicMaterial({ color: TELEGRAPH_COLOR, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.BackSide }),
+    );
+    mesh.add(halo);
+    const beam = makeBeacon(14, 420, 0.3);
+    beam.position.y = 20;
+    mesh.add(beam);
+    removeTelegraph();
+  }
   scene.add(mesh);
   powerUpMeshes[powerUp.id] = mesh;
 }
@@ -436,6 +488,7 @@ function addWallMesh(wall: any): void {
   const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(wall.position.x, 50, wall.position.z);
+  if (wall.axis === 'z') mesh.rotation.y = Math.PI / 2; // brawl W/E walls extend along z
   scene.add(mesh);
   wallMeshes[wall.id] = mesh;
 }
@@ -463,13 +516,292 @@ function clearRoundState(): void {
     hud.hidePowerUp();
     hud.hideUpgrade();
     hud.hideCombo();
+    hud.brawl.reset();
   }
 }
 
 function clearArenaFeatures(): void {
+  removeTelegraph();
   for (const id in powerUpMeshes) removePowerUpMesh(id);
   for (const id in wallMeshes) removeWallMesh(id);
   removeHazardMeshes();
+}
+
+function removePlayer(id: string): void {
+  const existing = gameState.players[id];
+  if (!existing) return;
+  scene.remove(existing.getMesh());
+  // Only the geometry is a per-player clone; the materials are shared with other players.
+  existing.getMesh().geometry?.dispose();
+  removeTag(id);
+  delete gameState.players[id];
+  updateEdgeColors();
+  refreshTargetUI();
+}
+
+// === BRAWL ARENA, TAGS AND TARGETING ===
+
+function buildSquareArena(): THREE.Group {
+  const g = new THREE.Group();
+  const postGeo = new THREE.CylinderGeometry(6, 6, 90, 8);
+  const postMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.set(sx * SQUARE_HALF, -5, sz * SQUARE_HALF);
+      g.add(post);
+    }
+  }
+  const len = SQUARE_HALF * 2;
+  for (const edge of SEAT_EDGES) {
+    const alongX = edge === 'N' || edge === 'S';
+    const p = edgePoint(edge, 0);
+    const line = new THREE.Mesh(
+      new THREE.BoxGeometry(alongX ? len : 10, 3, alongX ? 10 : len),
+      new THREE.MeshBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.85 }),
+    );
+    line.position.set(p.x, -47, p.z);
+    g.add(line);
+    // Pulsing wall of light: only visible on the edge being targeted.
+    const glow = new THREE.Mesh(
+      new THREE.PlaneGeometry(len, 140),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    glow.position.set(p.x, 20, p.z);
+    if (!alongX) glow.rotation.y = Math.PI / 2;
+    g.add(glow);
+    const parts = { line, glow, ticks: [] as THREE.Mesh[] };
+    edgeParts[edge] = parts;
+    // Posts at the travel limit (±EDGE_TRAVEL) mark where players stop; the corners stay clear.
+    for (const t of [-EDGE_TRAVEL, EDGE_TRAVEL]) {
+      const q = edgePoint(edge, t);
+      const tick = new THREE.Mesh(new THREE.BoxGeometry(14, 40, 14), new THREE.MeshBasicMaterial({ color: 0xcccccc }));
+      tick.position.set(q.x, -30, q.z);
+      g.add(tick);
+      parts.ticks.push(tick);
+    }
+  }
+  return g;
+}
+
+function playerForEdge(edge: Edge): any {
+  for (const id in gameState.players) {
+    if (gameState.players[id].view.edge === edge) return gameState.players[id];
+  }
+  return null;
+}
+
+function updateEdgeColors(): void {
+  for (const edge of SEAT_EDGES) {
+    const parts = edgeParts[edge];
+    if (!parts) continue;
+    const owner = arena === 'square' ? playerForEdge(edge) : null;
+    const hex = owner?.color || '#cccccc';
+    (parts.line.material as THREE.MeshBasicMaterial).color.set(hex);
+    (parts.glow.material as THREE.MeshBasicMaterial).color.set(hex);
+    for (const t of parts.ticks) (t.material as THREE.MeshBasicMaterial).color.set(hex);
+  }
+}
+
+function viewOf(p: { edge?: unknown; seat?: unknown }, direction: number): EdgeView {
+  return viewFor(arena, resolveEdge(p.edge, p.seat, direction));
+}
+
+function ensureTag(p: Player): void {
+  if (arena !== 'square' || typeof p.seat !== 'number' || playerTags[p.id]) return;
+  const tag = new PlayerTag(p.seat, p.name, p.color || seatColor(p.seat));
+  scene.add(tag.group);
+  playerTags[p.id] = tag;
+}
+
+function removeTag(id: string): void {
+  if (!playerTags[id]) return;
+  playerTags[id].dispose();
+  delete playerTags[id];
+}
+
+/** Server metadata (seat, colour, edge, alive, target) from player/opponent/state payloads. */
+function applyMeta(p: Player, d: any): void {
+  if (typeof d.seat === 'number') p.seat = d.seat;
+  if (isEdge(d.edge)) p.edge = d.edge;
+  if (typeof d.color === 'string') p.color = d.color;
+  else if (p.color === undefined && typeof p.seat === 'number') p.color = seatColor(p.seat);
+  if (typeof d.alive === 'boolean') p.alive = d.alive;
+  if (typeof d.targetId === 'string' || d.targetId === null) p.targetId = d.targetId;
+  ensureTag(p);
+}
+
+/** Put a player on its edge for the current arena; the camera follows when it is the local player. */
+function orient(p: Player): void {
+  // From the server's raw edge/seat: p.view may have been built for the lane (W/E map to S there).
+  const view = viewOf({ edge: p.edge, seat: p.seat }, p.direction);
+  const last = p.lastServer;
+  const onEdge = last && Math.abs(view.fixedAxis === 'z' ? last.z : last.x) > SQUARE_HALF - 100;
+  const lateral = onEdge && last ? lateralOf(view, last) : 0;
+  const pt = edgePoint(view.edge, lateral);
+  p.setView(view, pt.x, pt.z);
+  setWeapon(p, p.getWeaponCode());
+  if (p.id === gameState.myId && camController && !camController.isSpectatorMode()) {
+    camController.setView(view, lateral);
+  }
+}
+
+function setSpectatorCamera(): void {
+  if (!camController || !camController.isSpectatorMode()) return;
+  if (arena === 'square') {
+    camera.position.set(0, 1500, 1750);
+    camera.rotation.set(-0.72, 0, 0);
+    spectatorOverview = true;
+  } else if (spectatorOverview) {
+    camera.position.set(0, 0, 0);
+    camera.rotation.set(0, 0, 0);
+    spectatorOverview = false;
+  }
+}
+
+function applyArena(kind: ArenaKind): void {
+  if (kind === arena) return;
+  arena = kind;
+  if (laneGroup) laneGroup.visible = kind === 'lane';
+  if (squareGroup) squareGroup.visible = kind === 'square';
+  for (const id in gameState.players) {
+    const p = gameState.players[id] as Player;
+    orient(p);
+    if (kind === 'square') ensureTag(p);
+    else removeTag(id);
+  }
+  updateEdgeColors();
+  setSpectatorCamera();
+  refreshTargetUI();
+}
+
+function myPlayer(): Player | null {
+  return gameState.myId ? gameState.players[gameState.myId] || null : null;
+}
+
+function selectTarget(id: string): void {
+  const me = myPlayer();
+  if (!me || arena !== 'square' || id === me.targetId) return;
+  socket.emit('target.set', id);
+  me.targetId = id; // optimistic; the server's `target` broadcast confirms or corrects
+  refreshTargetUI();
+}
+
+function cycleMyTarget(): void {
+  const me = myPlayer();
+  if (!me || arena !== 'square') return;
+  const next = cycleTarget(Object.values(gameState.players) as Player[], me.id, me.targetId, 1);
+  if (next) selectTarget(next);
+}
+
+const isTouch = (): boolean => 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0;
+
+function refreshTargetUI(): void {
+  if (!targetUI) return;
+  const me = myPlayer();
+  const live = arena === 'square' && !!me && !(camController?.isSpectatorMode()) && matchPhase !== 'lobby' && matchPhase !== 'match_over';
+  // Tab is only taken over during a live brawl; elsewhere it keeps moving keyboard focus.
+  if (camController) camController.onCycleTarget = live ? cycleMyTarget : null;
+  targetUI.setVisible(live);
+  document.body.classList.toggle('brawl-targets', live);
+  if (!live || !me) return;
+  const opps = opponentsInOrder(Object.values(gameState.players) as Player[], me.id)
+    .map((p) => ({ id: p.id, name: p.name, seat: p.seat ?? 0, color: p.color || '#ffffff', alive: p.alive }));
+  targetUI.update(opps, me.targetId, !isTouch());
+}
+
+/** Per frame: seat tags follow the models and the current target is highlighted (model, ring, arrow, edge glow). */
+function updateBrawlVisuals(): void {
+  if (arena !== 'square') {
+    for (const e of SEAT_EDGES) {
+      const g = edgeParts[e]?.glow.material as THREE.MeshBasicMaterial | undefined;
+      if (g) g.opacity = 0;
+    }
+    for (const id in gameState.players) if (id !== gameState.myId) gameState.players[id].getMesh().visible = true;
+    return;
+  }
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220);
+  if (telegraph) {
+    telegraph.mesh.scale.set(1 + 0.35 * pulse, 1, 1 + 0.35 * pulse);
+    ((telegraph.mesh.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.12 + 0.28 * pulse;
+  }
+  for (const id in powerUpMeshes) {
+    const m = powerUpMeshes[id];
+    if (m.userData.central) m.scale.setScalar(2.6 + 0.4 * pulse);
+  }
+  for (const id in gameState.players) {
+    // A knocked-out player's model is hidden until `player.respawn` (the seat tag stays, dimmed).
+    if (id !== gameState.myId) gameState.players[id].getMesh().visible = gameState.players[id].alive;
+  }
+  const me = myPlayer();
+  const targetId = me && !camController?.isSpectatorMode() ? me.targetId : null;
+  for (const id in gameState.players) {
+    const p = gameState.players[id] as Player;
+    const tag = playerTags[id];
+    if (!tag) continue;
+    tag.update(p.getMesh().position, id === targetId, p.alive, pulse);
+    tag.group.visible = p.getMesh().visible || id !== gameState.myId;
+  }
+  for (const e of SEAT_EDGES) {
+    const g = edgeParts[e]?.glow.material as THREE.MeshBasicMaterial | undefined;
+    if (!g) continue;
+    const owner = playerForEdge(e);
+    g.opacity = owner && owner.id === targetId ? 0.15 + 0.3 * pulse : 0;
+  }
+}
+
+/** Brawl HUD from a `state` payload: standings, round clock, sudden-death roster, knocked-out dimming. */
+function updateBrawlHud(state: any): void {
+  if (!hud) return;
+  const live = state.mode === 'brawl' && (state.phase === 'playing' || state.phase === 'sudden_death' || state.phase === 'countdown');
+  if (state.mode !== 'brawl') { hud.brawl.setActive(false); hud.brawl.reset(); }
+  else if (state.phase !== 'match_over') hud.brawl.setActive(live);
+  killFeed?.setMaxEntries(live ? (isTouch() ? 4 : 6) : 8);
+  if (!live) return;
+  hud.brawl.setMyId(gameState.myId ?? '');
+  const down = new Set<string>();
+  for (const id in state.players) if (state.players[id] && state.players[id].alive === false) down.add(id);
+  if (Array.isArray(state.standings)) hud.brawl.setStandings(state.standings as StandingRow[], down);
+  const sudden = state.phase === 'sudden_death';
+  const tied: string[] = sudden && Array.isArray(state.suddenPlayerIds) ? state.suddenPlayerIds.map((id: string) => getPlayerName(id)) : [];
+  hud.brawl.setRound(typeof state.roundRemainingMs === 'number' ? state.roundRemainingMs : 0, sudden, tied);
+}
+
+const TELEGRAPH_COLOR = 0xffd700;
+let telegraph: { id: string; mesh: THREE.Group } | null = null;
+
+function makeBeacon(radius: number, height: number, opacity: number): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: TELEGRAPH_COLOR, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false });
+  const col = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 24, 1, true), mat);
+  col.position.y = height / 2 - 40;
+  g.add(col);
+  return g;
+}
+
+function showTelegraph(data: any): void {
+  removeTelegraph();
+  const mesh = makeBeacon(70, 420, 0.25);
+  mesh.position.set(data.position?.x ?? 0, 0, data.position?.z ?? 0);
+  scene.add(mesh);
+  telegraph = { id: data.id, mesh };
+  hud?.brawl.telegraph(typeof data.spawnAt === 'number' ? data.spawnAt : Date.now() + 3000);
+}
+
+function removeTelegraph(): void {
+  if (!telegraph) return;
+  scene.remove(telegraph.mesh);
+  disposeObject(telegraph.mesh);
+  telegraph = null;
+  hud?.brawl.telegraph(0);
+}
+
+function buildPlayer(data: any, weaponCode: number): Player {
+  const view = viewOf(data, data.direction);
+  const p = new Player(data.id, data.name, data.position, view.direction, models!.getPlayer(view.direction, playerYaw(view.inward)), view);
+  applyMeta(p, data);
+  setWeapon(p, weaponCode);
+  return p;
 }
 
 function setupEvents(): void {
@@ -480,25 +812,43 @@ function setupEvents(): void {
 
   // Event for receiving player information from the server.
   socket.on('player', (player: any) => {
+    if (typeof player.token === 'string') storeSeatToken(player.token);
+
+    // Promoted from the queue: switch from the spectator camera to the player flow in place.
+    if (queued) {
+      queued = false;
+      lobby?.clearQueued();
+    }
+
     gameState.myId = player.id;
+    lobby?.setMyId(player.id);
 
-    const p = new Player(player.id, player.name, player.position, player.direction, models!.getPlayer(player.direction));
-    setWeapon(p, Constants.FOX);
-
+    // The server re-sends `player` (roster changes, reconnect): treat it as an update, never a second copy.
+    removePlayer(player.id);
+    const p = buildPlayer(player, Constants.FOX);
+    const view = p.view;
     gameState.players[player.id] = p;
 
     // Add own mesh to scene but hide it (visible in 3rd person)
     scene.add(p.getMesh());
     p.getMesh().visible = false;
 
-    camera.position.z = player.position.z;
-
-    if (player.direction === -1) {
-      camera.rotation.y = Math.PI;
+    if (arena === 'square') {
+      // Brawl: camera on the player's own edge, looking at the centre.
+      camera.position[view.fixedAxis] = view.fixed;
+      camera.position[view.lateral] = player.position[view.lateral];
+    } else {
+      camera.position.z = player.position.z;
     }
+    camera.position.y = 0; // a promoted spectator leaves the overview camera
+    camera.rotation.set(0, view.yaw, 0);
+    spectatorOverview = false;
 
-    camController = new CamController(camera, socket, player.direction);
+    camController?.dispose();
+    camController = new CamController(camera, socket, view.direction, view);
     camController.clearShake = () => screenShake?.clear();
+    updateEdgeColors();
+    refreshTargetUI();
 
     // Weapon bar (desktop), mobile weapon buttons, one-time controls hint
     if (hud) {
@@ -518,27 +868,55 @@ function setupEvents(): void {
       hud.showControlsHint();
     }
 
-    // Alone in the lobby until an opponent shows up.
-    if (hud) hud.showWaiting(false);
+    // The lobby panel (driven by the server's `lobby` event) replaces the old waiting overlay;
+    // its Ready button sends `ready`.
+  });
 
-    // Send ready signal
-    socket.emit('ready');
+  socket.on('lobby', (payload: any) => {
+    // Anyone not on a seat is gone (e.g. the practice bot after End practice).
+    const seated = new Set<string>((payload.seats || []).filter((x: any) => x).map((x: any) => x.id));
+    for (const id of Object.keys(gameState.players)) {
+      if (!seated.has(id)) removePlayer(id);
+    }
+    lobby?.update(payload);
+  });
+
+  socket.on('join.queued', (data: any) => {
+    queued = true;
+    if (!camController) camController = new CamController(camera, null, 0);
+    setSpectatorCamera();
+    hud?.hideCountdown();
+    lobby?.setMyId(socket.id || '');
+    lobby?.setQueued(data && typeof data.position === 'number' ? data.position : 0);
+  });
+
+  socket.on('player.disconnected', (data: any) => {
+    if (data && data.id) lobby?.playerDropped(data.id, Number(data.until));
+  });
+
+  socket.on('player.reconnected', (id: string) => {
+    lobby?.playerReconnected(id);
   });
 
   // Event for receiving opponent information from the server.
   socket.on('opponent', (player: any) => {
+    if (player.id === gameState.myId) return; // own entry is managed by the `player` event
+    removePlayer(player.id); // repeated opponent events are updates
 
-    const p = new Player(player.id, player.name, player.position, player.direction, models!.getPlayer(player.direction));
-    setWeapon(p, player.weaponCode);
-
+    const p = buildPlayer(player, player.weaponCode);
     gameState.players[player.id] = p;
 
-    if (player.id !== gameState.myId) {
-      scene.add(p.getMesh());
-      if (hud) hud.hideWaiting();
-    }
+    scene.add(p.getMesh());
+    updateEdgeColors();
+    refreshTargetUI();
+  });
 
-    socket.emit('ready');
+  // Brawl targeting: `target (playerId, targetId)`.
+  socket.on('target', (playerId: string, targetId: string | null) => {
+    const p = gameState.players[playerId];
+    if (!p) return;
+    p.targetId = typeof targetId === 'string' ? targetId : null;
+    if (playerId === gameState.myId) refreshTargetUI();
   });
 
   socket.on('move.start', (keyCode: number, playerId: string) => {
@@ -556,6 +934,9 @@ function setupEvents(): void {
   socket.on('state', (state: any) => {
     // Covers spectators/reloads joining mid-round (state is broadcast every 200 ms)
     if (easterEggs) easterEggs.setPhase(state.phase === 'playing' || state.phase === 'sudden_death');
+    matchPhase = state.phase || matchPhase;
+    const wanted = arenaFromState(state.mode);
+    if (wanted) applyArena(wanted);
     for (const key in state.zombies) {
       const serverZombie = state.zombies[key];
       if (!serverZombie) continue;
@@ -566,6 +947,10 @@ function setupEvents(): void {
         continue;
       }
       clientZombie.setPosition(serverZombie.position);
+      if (typeof serverZombie.vx === 'number' && typeof serverZombie.vz === 'number') {
+        const h = headingOf(serverZombie);
+        if (Math.abs(h.x - clientZombie.hx) > 0.01 || Math.abs(h.z - clientZombie.hz) > 0.01) clientZombie.setHeading(h.x, h.z);
+      }
       // Server is authoritative for health
       if (typeof serverZombie.health === 'number') clientZombie.health = serverZombie.health;
       // Sync speed (can change from kill buffs, hazards, sudden death)
@@ -590,6 +975,7 @@ function setupEvents(): void {
         continue;
       }
       clientPlayer.setPosition(serverPlayer.position);
+      applyMeta(clientPlayer, serverPlayer);
       const scoreGain = serverPlayer.score - clientPlayer.score;
       if (hud && scoreGain > 0) {
         hud.floatScore(scoreGain, clientPlayer.id === gameState.myId);
@@ -609,6 +995,8 @@ function setupEvents(): void {
       }
     }
 
+    updateBrawlHud(state);
+
     // Update HUD
     if (hud && gameState.myId) {
       const myPlayer = state.players[gameState.myId];
@@ -623,11 +1011,13 @@ function setupEvents(): void {
         hud.updateRound(state.round, state.roundWins, gameState.myId, opponentId || undefined);
       }
 
-      // Sudden death indicator
-      if (state.suddenDeath) {
+      // Sudden death indicator (brawl shows it in the round clock)
+      if (state.suddenDeath && state.mode !== 'brawl') {
         hud.showSuddenDeath();
       }
     }
+
+    refreshTargetUI();
 
     // Sync walls from state
     if (state.walls) {
@@ -662,7 +1052,7 @@ function setupEvents(): void {
     gameState.explosions.push(new Explosion(scene, zombie1.getMesh().position, wc));
 
     if (audio) audio.play('collision');
-    if (killFeed) killFeed.add(`${zombie1.name} vs ${zombie2.name}`, '#ff8800');
+    if (killFeed && arena !== 'square') killFeed.add(`${zombie1.name} vs ${zombie2.name}`, '#ff8800');
 
     // Creatures are not removed here: the collision event does not say who died.
     // The server's next `state` (which omits dead creatures) removes them.
@@ -670,21 +1060,32 @@ function setupEvents(): void {
     zombie2.health -= 1;
   });
 
-  socket.on('zombie.out-of-bounds', (zombieId: string, firedByPlayerId: string) => {
+  socket.on('zombie.out-of-bounds', (zombieId: string, firedByPlayerId: string, hitPlayerId?: string | null) => {
     const zombie = gameState.zombies[zombieId];
     if (!zombie) return;
 
     if (killFeed) {
       const scorerName = getPlayerName(firedByPlayerId);
-      const special = rareScore(easterEggs, audio, scorerName, zombie.name);
-      if (special) killFeed.add(special, RARE_SCORE_COLOR);
-      else killFeed.add(`${scorerName} scored! (${zombie.name})`, '#44ff44');
+      if (arena === 'square') {
+        // Brawl: "Bob ⟶ Cleo" in the attacker's seat colour; creatures that leave an empty edge are not news.
+        if (hitPlayerId) {
+          const victim = getPlayerName(hitPlayerId);
+          killFeed.add(hitLine(scorerName, victim), '#ffffff',
+            { badge: gameState.players[firedByPlayerId]?.color, mergeKey: `hit:${firedByPlayerId}>${hitPlayerId}`, format: (n) => hitLine(scorerName, victim, n) });
+        }
+      } else {
+        const special = rareScore(easterEggs, audio, scorerName, zombie.name);
+        if (special) killFeed.add(special, RARE_SCORE_COLOR);
+        else killFeed.add(`${scorerName} scored! (${zombie.name})`, '#44ff44');
+      }
     }
 
-    if (audio) audio.play('score');
+    // Brawl: the score sound only when I fired or was hit; the hit itself shakes via player.damage.
+    if (audio && (arena !== 'square' || firedByPlayerId === gameState.myId || hitPlayerId === gameState.myId)) audio.play('score');
 
-    // Screen shake when scored against
-    if (firedByPlayerId !== gameState.myId && screenShake) {
+    // Screen shake when scored against. Lane: any creature that is not mine is aimed at me.
+    // Square: not here; a hit on me arrives as player.damage (shake, flash, attacker arrow).
+    if (arena !== 'square' && firedByPlayerId !== gameState.myId && screenShake) {
       screenShake.trigger(15);
       if (audio) audio.play('damage');
     }
@@ -709,13 +1110,11 @@ function setupEvents(): void {
   });
 
   socket.on('player.exit', (playerId: string) => {
+    lobby?.playerLeft(playerId);
     const player = gameState.players[playerId];
     if (!player) return;
     if (easterEggs) easterEggs.setPhase(false);
-    scene.remove(player.getMesh());
-    delete gameState.players[playerId];
-    // The opponent (not me) left: wait for a replacement.
-    if (playerId !== gameState.myId && gameState.myId && hud) hud.showWaiting(true);
+    removePlayer(playerId);
   });
 
   // Game lifecycle events
@@ -725,7 +1124,10 @@ function setupEvents(): void {
     if (audio) audio.play('countdown');
   });
 
-  socket.on('game.start', () => {
+  socket.on('game.start', (data: any) => {
+    matchPhase = 'playing';
+    if (data && data.arena && (data.arena.kind === 'square' || data.arena.kind === 'lane')) applyArena(data.arena.kind);
+    refreshTargetUI();
     if (easterEggs) easterEggs.setPhase(true);
     if (hud) hud.showGameStart();
     if (audio) audio.play('game_start');
@@ -755,19 +1157,26 @@ function setupEvents(): void {
     const opponentId = getOpponentId() || '';
 
     if (hud) {
-      hud.showMatchOver(winnerName, iWon, data.roundWins, data.stats, gameState.myId, opponentId, data.elo, data.leaderboard);
+      hud.showMatchOver(winnerName, iWon, data.roundWins || {}, data.stats || {}, gameState.myId, opponentId, data.elo, data.leaderboard, {
+        mode: data.mode,
+        winnerId: data.winner,
+        standings: data.standings,
+      });
     }
     if (audio) audio.play('game_over');
+    removeTelegraph();
+    if (data.mode === 'brawl') hud?.brawl.showResults();
     if (killFeed) killFeed.add(iWon ? 'VICTORY!' : 'DEFEAT', iWon ? '#4caf50' : '#f44336');
 
-    // Rematch button handler
+    // Rematch / Back to lobby button handlers
     setTimeout(() => {
+      document.getElementById('lobby-return-btn')?.addEventListener('click', () => socket.emit('lobby.return'));
       const rematchBtn = document.getElementById('rematch-btn');
       if (rematchBtn) {
         rematchBtn.addEventListener('click', () => {
           socket.emit('rematch');
           const status = document.getElementById('rematch-status');
-          if (status) status.textContent = 'Waiting for opponent...';
+          if (status) status.textContent = data.mode === 'brawl' ? 'Waiting for the others...' : 'Waiting for opponent...';
         });
       }
     }, 100);
@@ -804,7 +1213,7 @@ function setupEvents(): void {
       hud.showCombo(count);
     }
     if (audio) audio.play('combo');
-    if (killFeed) killFeed.add(`${getPlayerName(playerId)} COMBO x${count}!`, '#ff0');
+    if (killFeed && arena !== 'square') killFeed.add(`${getPlayerName(playerId)} COMBO x${count}!`, '#ff0');
   });
 
   // Upgrade event
@@ -812,14 +1221,53 @@ function setupEvents(): void {
     if (playerId === gameState.myId && hud) {
       hud.showUpgrade(level);
     }
-    if (killFeed) killFeed.add(`${getPlayerName(playerId)} creatures upgraded!`, '#ff0');
+    if (killFeed && arena !== 'square') killFeed.add(`${getPlayerName(playerId)} creatures upgraded!`, '#ff0');
   });
 
   // Damage event
-  socket.on('player.damage', (playerId: string, _newHp: number) => {
+  socket.on('player.damage', (playerId: string, _newHp: number, attackerId?: string) => {
     if (playerId === gameState.myId) {
       if (screenShake) screenShake.trigger(8);
       if (hud) hud.flashDamage();
+      const attacker = attackerId ? gameState.players[attackerId] : null;
+      const me = myPlayer();
+      if (hud && attacker && me && arena === 'square') {
+        hud.brawl.hit(attacker.name, attacker.color || '#ffffff', attackerAngle(me.view, attacker.view.edge));
+      }
+    }
+  });
+
+  // Brawl knockouts and respawns
+  socket.on('player.ko', (data: { id: string; by: string | null; respawnAt: number }) => {
+    const victim = gameState.players[data.id];
+    if (!victim) return;
+    victim.alive = false;
+    const byName = data.by && gameState.players[data.by] ? getPlayerName(data.by) : null;
+    if (killFeed) {
+      const line = byName ? `${byName} \u27F6 ${victim.name}  KO!` : `${victim.name} knocked out!`;
+      killFeed.add(line, '#ffffff', { strong: true, badge: data.by ? gameState.players[data.by]?.color : '#ffffff' });
+    }
+    if (data.id === gameState.myId) {
+      hud?.brawl.knockedOut(byName, data.respawnAt);
+      if (screenShake) screenShake.trigger(20);
+    }
+    refreshTargetUI();
+  });
+
+  socket.on('player.respawn', (playerId: string) => {
+    const p = gameState.players[playerId];
+    if (p) p.alive = true;
+    if (playerId === gameState.myId) hud?.brawl.respawned();
+    refreshTargetUI();
+  });
+
+  socket.on('powerup.telegraph', (data: any) => {
+    if (arena === 'square' && data && typeof data.id === 'string') showTelegraph(data);
+  });
+
+  socket.on('standings', (rows: StandingRow[]) => {
+    if (hud && Array.isArray(rows) && hud.brawl.isActive()) {
+      hud.brawl.setStandings(rows, new Set(Object.values(gameState.players).filter((p: any) => !p.alive).map((p: any) => p.id)));
     }
   });
 
@@ -841,6 +1289,7 @@ function setupEvents(): void {
   });
 
   socket.on('powerup.collect', (puId: string, playerId: string, type: string) => {
+    const central = !!powerUpMeshes[puId]?.userData.central;
     removePowerUpMesh(puId);
     if (audio) audio.play('powerup');
     const name = getPlayerName(playerId);
@@ -850,7 +1299,10 @@ function setupEvents(): void {
       heal: 'Heal',
       double_points: '2X Points',
     };
-    if (killFeed) killFeed.add(`${name} got ${labels[type] || type}!`, '#ff0');
+    if (killFeed) {
+      if (central) killFeed.add(`\u2605 ${name} captured the centre: ${labels[type] || type}!`, '#ffffff', { strong: true, badge: gameState.players[playerId]?.color });
+      else if (arena !== 'square') killFeed.add(`${name} got ${labels[type] || type}!`, '#ff0');
+    }
     if (playerId === gameState.myId && hud) {
       hud.showPowerUp(type);
     }
@@ -858,7 +1310,7 @@ function setupEvents(): void {
 
   // Heal event
   socket.on('player.heal', (playerId: string, _newHp: number) => {
-    if (killFeed) killFeed.add(`${getPlayerName(playerId)} healed!`, '#ff0066');
+    if (killFeed && arena !== 'square') killFeed.add(`${getPlayerName(playerId)} healed!`, '#ff0066');
   });
 
   // Hazard events
@@ -902,10 +1354,13 @@ function setupEvents(): void {
   });
 
   // Sudden death
-  socket.on('sudden.death', () => {
-    if (hud) hud.showSuddenDeath();
+  socket.on('sudden.death', (data?: { mode?: string; playerIds?: string[] }) => {
+    const brawl = data?.mode === 'brawl';
+    if (hud && !brawl) hud.showSuddenDeath();
     if (audio) audio.play('sudden_death');
-    if (killFeed) killFeed.add('SUDDEN DEATH! All creatures buffed!', '#ff0000');
+    if (killFeed) {
+      if (!brawl) killFeed.add('SUDDEN DEATH! All creatures buffed!', '#ff0000');
+    }
     if (screenShake) screenShake.trigger(20);
   });
 
@@ -918,7 +1373,7 @@ function setupEvents(): void {
       juggernaut: 'Juggernaut',
       twin_strike: 'Twin Strike',
     };
-    if (killFeed) killFeed.add(`${getPlayerName(playerId)} triggered ${names[type] || type}!`, '#0ff');
+    if (killFeed && arena !== 'square') killFeed.add(`${getPlayerName(playerId)} triggered ${names[type] || type}!`, '#0ff');
     if (playerId === gameState.myId && hud) {
       hud.showSynergy(type);
     }
@@ -1004,6 +1459,7 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   const terrain = new Terrain(128, 128, camera.position.y);
   scene.add(terrain.getMesh());
 
+  laneGroup = new THREE.Group();
   // Arena boundary markers — corner posts
   const postGeo = new THREE.CylinderGeometry(5, 5, 80, 8);
   const postMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -1019,7 +1475,7 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   for (const [px, py, pz] of corners) {
     const post = new THREE.Mesh(postGeo, postMat);
     post.position.set(px, py, pz);
-    scene.add(post);
+    laneGroup.add(post);
   }
 
   // Arena side lines (thin white boxes along the edges)
@@ -1029,21 +1485,27 @@ function init(renderAreaId: string, isSpectator: boolean): void {
     const lineGeo = new THREE.BoxGeometry(4, 2, arenaHalfZ * 2);
     const line = new THREE.Mesh(lineGeo, lineMat);
     line.position.set(xSide, -48, 0);
-    scene.add(line);
+    laneGroup.add(line);
   }
   // End lines (Z edges)
   for (const zSide of [-arenaHalfZ, arenaHalfZ]) {
     const lineGeo = new THREE.BoxGeometry(arenaHalfX * 2, 2, 4);
     const line = new THREE.Mesh(lineGeo, lineMat);
     line.position.set(0, -48, zSide);
-    scene.add(line);
+    laneGroup.add(line);
   }
   // Center line
   const centerLineGeo = new THREE.BoxGeometry(arenaHalfX * 2, 2, 3);
   const centerLineMat = new THREE.MeshBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.4 });
   const centerLine = new THREE.Mesh(centerLineGeo, centerLineMat);
   centerLine.position.set(0, -48, 0);
-  scene.add(centerLine);
+  laneGroup.add(centerLine);
+
+  scene.add(laneGroup);
+  squareGroup = buildSquareArena();
+  squareGroup.visible = false;
+  scene.add(squareGroup);
+  arena = 'lane';
 
   const explosion = new Explosion(scene, { x: 0, y: 0, z: 0 });
   gameState.explosions.push(explosion);
@@ -1063,6 +1525,7 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   killFeed = new KillFeed();
   easterEggs = new EasterEggs(audio, () => gameState.zombies);
   hud = new HUD(isSpectator);
+  targetUI = isSpectator ? null : new TargetUI((id) => selectTarget(id));
 
   handleResize();
   window.addEventListener('resize', handleResize);
@@ -1085,17 +1548,12 @@ function animate(): void {
  * Tells the game that a player wants to join the current game.
  */
 function joinPlayer(gameId: number): void {
-  socket.on('join.error.full', () => {
-    joinSpectator(gameId);
-    const ev = new Event('join.spectator.full');
-    window.dispatchEvent(ev);
-  });
-
   socket.on('join.error.notfound', () => {
     window.location.href = '/';
   });
 
-  socket.emit('join.player', { gameId: gameId });
+  seatKey = seatTokenKey(gameId);
+  socket.emit('join.player', { gameId: gameId, token: readSeatToken() });
 }
 
 /**
@@ -1106,8 +1564,10 @@ function joinSpectator(gameId: number): void {
     window.location.href = '/';
   });
 
+  spectatorGameId = gameId;
   socket.emit('join.spectator', { gameId: gameId });
   camController = new CamController(camera, null, 0);
+  setSpectatorCamera();
 
   // Set up spectator vote buttons
   if (hud) {
@@ -1151,7 +1611,27 @@ class ZombieHugs {
         setTimeout(checkReady, 1000);
       } else {
         gameState.game = this;
+        lobby = params.isSpectator ? null : new Lobby({
+          onReady: (ready) => socket.emit(ready ? 'ready' : 'unready'),
+          onReturn: () => socket.emit('lobby.return'),
+        });
         setupEvents();
+
+        // socket.io reconnect after a drop: the server forgot this socket, so re-join
+        // (players present their seat token to reclaim the seat).
+        let connectedBefore = socket.connected;
+        socket.on('connect', () => {
+          if (connectedBefore) {
+            // The server forgot this socket (and, in the lobby, freed the seat): rebuild from its replay.
+            for (const id of Object.keys(gameState.players)) removePlayer(id);
+            clearRoundState();
+            queued = false;
+            lobby?.clearQueued();
+            if (spectatorGameId !== null) socket.emit('join.spectator', { gameId: spectatorGameId });
+            else if (seatKey) socket.emit('join.player', { gameId: params.gameId, token: readSeatToken() });
+          }
+          connectedBefore = true;
+        });
         animating = true;
         animate();
 

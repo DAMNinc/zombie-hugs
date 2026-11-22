@@ -59,12 +59,12 @@ export default class Models {
     return { model: this.fox, offset: { x: 0, y: 0, z: 0 }, health: healthFromCode(Constants.HORDE), scale: 0.4 };
   }
 
-  getPlayer(direction: number): any {
+  getPlayer(direction: number, yaw: number = Math.PI * 0.5 * direction): any {
     const data = this.player!;
     const material = data.materials.length > 1 ? data.materials : data.materials[0];
     const mesh = new THREE.Mesh(data.geometry.clone(), material);
     mesh.scale.set(0.05, 0.05, 0.05);
-    mesh.rotation.y = Math.PI * 0.5 * direction;
+    mesh.rotation.y = yaw;
     return mesh;
   }
 }

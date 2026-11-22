@@ -92,23 +92,22 @@ describe('double join (A8)', () => {
 });
 
 describe('capacity (A4)', () => {
-  it('third joiner gets join.error.full and never a player event', () => {
-    const [a, b, c] = ['a', 'b', 'c'].map(connect);
-    joinPlayer(a);
-    joinPlayer(b);
-    joinPlayer(c);
-    expect(c.events('player')).toHaveLength(0);
-    expect(c.events('join.error.full')).toHaveLength(1);
-    expect(Object.keys(game.players)).toEqual(['a', 'b']);
+  it('the fifth joiner is queued as a spectator, never a player and never join.error.full', () => {
+    const ss = ['a', 'b', 'c', 'd', 'e'].map(connect);
+    ss.forEach(s => joinPlayer(s));
+    const e = ss[4];
+    expect(e.events('player')).toHaveLength(0);
+    expect(e.events('join.error.full')).toHaveLength(0);
+    expect(e.events('join.queued')[0].args[0]).toEqual({ position: 1 });
+    expect(Object.keys(game.players)).toEqual(['a', 'b', 'c', 'd']);
+    expect(Object.keys(game.spectators)).toEqual(['e']);
   });
 
-  it('the rejected joiner can then join as spectator (client flow)', () => {
-    const [a, b, c] = ['a', 'b', 'c'].map(connect);
-    joinPlayer(a);
-    joinPlayer(b);
-    joinPlayer(c);
-    c.trigger('join.spectator', { gameId: game.id });
-    expect(Object.keys(game.spectators)).toEqual(['c']);
+  it('a queued socket stays joined: a later join.spectator is ignored', () => {
+    const ss = ['a', 'b', 'c', 'd', 'e'].map(connect);
+    ss.forEach(s => joinPlayer(s));
+    ss[4].trigger('join.spectator', { gameId: game.id });
+    expect(Object.keys(game.spectators)).toEqual(['e']);
   });
 });
 
@@ -135,11 +134,10 @@ describe('side assignment (A3)', () => {
     expect(game.players['c'].position.z).toBe(-1000);
   });
 
-  it('works when the second player leaves instead, and after a rejected third joiner', () => {
-    const [a, b, c, d] = ['a', 'b', 'c', 'd'].map(connect);
+  it('works when the second player leaves instead', () => {
+    const [a, b, d] = ['a', 'b', 'd'].map(connect);
     joinPlayer(a);
     joinPlayer(b);
-    joinPlayer(c); // rejected
     game.exitPlayer(game.players['b']);
     joinPlayer(d);
     expect(game.players['a'].direction).toBe(-1);
