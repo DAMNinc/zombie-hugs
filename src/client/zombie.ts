@@ -12,6 +12,8 @@ import Audio from './audio';
 import ScreenShake from './screenshake';
 import KillFeed from './killfeed';
 import EasterEggs, { rareScore, RARE_SCORE_COLOR } from './easterEggs';
+import Lobby from './lobby';
+import { seatTokenKey } from './lobbyModel';
 import { disposeObject } from './dispose';
 import { parseLegacyJSON } from './LegacyJSONLoader';
 
@@ -37,7 +39,18 @@ let killFeed: KillFeed | null = null;
 let easterEggs: EasterEggs | null = null;
 let shieldMeshes: Record<string, any> = {};
 let pingStart: number = 0;
+let lobby: Lobby | null = null;
+let seatKey: string | null = null; // sessionStorage key of this tab's seat token (players only)
+let spectatorGameId: number | null = null; // set when this tab joined as a plain spectator
+let queued = false; // seated-player join answered with join.queued: spectating until promoted
 const socket = io();
+
+function readSeatToken(): string | undefined {
+  try { return (seatKey && sessionStorage.getItem(seatKey)) || undefined; } catch (_e) { return undefined; }
+}
+function storeSeatToken(token: string): void {
+  try { if (seatKey) sessionStorage.setItem(seatKey, token); } catch (_e) { /* private mode: no reconnect token */ }
+}
 
 // New feature state
 let hazardMeshes: any[] = [];
@@ -472,6 +485,13 @@ function clearArenaFeatures(): void {
   removeHazardMeshes();
 }
 
+function removePlayer(id: string): void {
+  const existing = gameState.players[id];
+  if (!existing) return;
+  scene.remove(existing.getMesh());
+  delete gameState.players[id];
+}
+
 function setupEvents(): void {
   // Event for receiving information about zombies.
   socket.on('zombie', (zombie: any, playerId: string) => {
@@ -480,8 +500,19 @@ function setupEvents(): void {
 
   // Event for receiving player information from the server.
   socket.on('player', (player: any) => {
-    gameState.myId = player.id;
+    if (typeof player.token === 'string') storeSeatToken(player.token);
 
+    // Promoted from the queue: switch from the spectator camera to the player flow in place.
+    if (queued) {
+      queued = false;
+      lobby?.clearQueued();
+    }
+
+    gameState.myId = player.id;
+    lobby?.setMyId(player.id);
+
+    // The server re-sends `player` (roster changes, reconnect): treat it as an update, never a second copy.
+    removePlayer(player.id);
     const p = new Player(player.id, player.name, player.position, player.direction, models!.getPlayer(player.direction));
     setWeapon(p, Constants.FOX);
 
@@ -493,10 +524,9 @@ function setupEvents(): void {
 
     camera.position.z = player.position.z;
 
-    if (player.direction === -1) {
-      camera.rotation.y = Math.PI;
-    }
+    camera.rotation.y = player.direction === -1 ? Math.PI : 0;
 
+    camController?.dispose();
     camController = new CamController(camera, socket, player.direction);
     camController.clearShake = () => screenShake?.clear();
 
@@ -518,27 +548,46 @@ function setupEvents(): void {
       hud.showControlsHint();
     }
 
-    // Alone in the lobby until an opponent shows up.
-    if (hud) hud.showWaiting(false);
+    // The lobby panel (driven by the server's `lobby` event) replaces the old waiting overlay;
+    // its Ready button sends `ready`.
+  });
 
-    // Send ready signal
-    socket.emit('ready');
+  socket.on('lobby', (payload: any) => {
+    // Anyone not on a seat is gone (e.g. the practice bot after End practice).
+    const seated = new Set<string>((payload.seats || []).filter((x: any) => x).map((x: any) => x.id));
+    for (const id of Object.keys(gameState.players)) {
+      if (!seated.has(id)) removePlayer(id);
+    }
+    lobby?.update(payload);
+  });
+
+  socket.on('join.queued', (data: any) => {
+    queued = true;
+    if (!camController) camController = new CamController(camera, null, 0);
+    hud?.hideCountdown();
+    lobby?.setMyId(socket.id || '');
+    lobby?.setQueued(data && typeof data.position === 'number' ? data.position : 0);
+  });
+
+  socket.on('player.disconnected', (data: any) => {
+    if (data && data.id) lobby?.playerDropped(data.id, Number(data.until));
+  });
+
+  socket.on('player.reconnected', (id: string) => {
+    lobby?.playerReconnected(id);
   });
 
   // Event for receiving opponent information from the server.
   socket.on('opponent', (player: any) => {
+    if (player.id === gameState.myId) return; // own entry is managed by the `player` event
+    removePlayer(player.id); // repeated opponent events are updates
 
     const p = new Player(player.id, player.name, player.position, player.direction, models!.getPlayer(player.direction));
     setWeapon(p, player.weaponCode);
 
     gameState.players[player.id] = p;
 
-    if (player.id !== gameState.myId) {
-      scene.add(p.getMesh());
-      if (hud) hud.hideWaiting();
-    }
-
-    socket.emit('ready');
+    scene.add(p.getMesh());
   });
 
   socket.on('move.start', (keyCode: number, playerId: string) => {
@@ -709,13 +758,12 @@ function setupEvents(): void {
   });
 
   socket.on('player.exit', (playerId: string) => {
+    lobby?.playerLeft(playerId);
     const player = gameState.players[playerId];
     if (!player) return;
     if (easterEggs) easterEggs.setPhase(false);
     scene.remove(player.getMesh());
     delete gameState.players[playerId];
-    // The opponent (not me) left: wait for a replacement.
-    if (playerId !== gameState.myId && gameState.myId && hud) hud.showWaiting(true);
   });
 
   // Game lifecycle events
@@ -755,19 +803,23 @@ function setupEvents(): void {
     const opponentId = getOpponentId() || '';
 
     if (hud) {
-      hud.showMatchOver(winnerName, iWon, data.roundWins, data.stats, gameState.myId, opponentId, data.elo, data.leaderboard);
+      hud.showMatchOver(winnerName, iWon, data.roundWins || {}, data.stats || {}, gameState.myId, opponentId, data.elo, data.leaderboard, {
+        mode: data.mode,
+        standings: data.standings,
+      });
     }
     if (audio) audio.play('game_over');
     if (killFeed) killFeed.add(iWon ? 'VICTORY!' : 'DEFEAT', iWon ? '#4caf50' : '#f44336');
 
-    // Rematch button handler
+    // Rematch / Back to lobby button handlers
     setTimeout(() => {
+      document.getElementById('lobby-return-btn')?.addEventListener('click', () => socket.emit('lobby.return'));
       const rematchBtn = document.getElementById('rematch-btn');
       if (rematchBtn) {
         rematchBtn.addEventListener('click', () => {
           socket.emit('rematch');
           const status = document.getElementById('rematch-status');
-          if (status) status.textContent = 'Waiting for opponent...';
+          if (status) status.textContent = data.mode === 'brawl' ? 'Waiting for the others...' : 'Waiting for opponent...';
         });
       }
     }, 100);
@@ -1095,7 +1147,8 @@ function joinPlayer(gameId: number): void {
     window.location.href = '/';
   });
 
-  socket.emit('join.player', { gameId: gameId });
+  seatKey = seatTokenKey(gameId);
+  socket.emit('join.player', { gameId: gameId, token: readSeatToken() });
 }
 
 /**
@@ -1106,6 +1159,7 @@ function joinSpectator(gameId: number): void {
     window.location.href = '/';
   });
 
+  spectatorGameId = gameId;
   socket.emit('join.spectator', { gameId: gameId });
   camController = new CamController(camera, null, 0);
 
@@ -1151,7 +1205,27 @@ class ZombieHugs {
         setTimeout(checkReady, 1000);
       } else {
         gameState.game = this;
+        lobby = params.isSpectator ? null : new Lobby({
+          onReady: (ready) => socket.emit(ready ? 'ready' : 'unready'),
+          onReturn: () => socket.emit('lobby.return'),
+        });
         setupEvents();
+
+        // socket.io reconnect after a drop: the server forgot this socket, so re-join
+        // (players present their seat token to reclaim the seat).
+        let connectedBefore = socket.connected;
+        socket.on('connect', () => {
+          if (connectedBefore) {
+            // The server forgot this socket (and, in the lobby, freed the seat): rebuild from its replay.
+            for (const id of Object.keys(gameState.players)) removePlayer(id);
+            clearRoundState();
+            queued = false;
+            lobby?.clearQueued();
+            if (spectatorGameId !== null) socket.emit('join.spectator', { gameId: spectatorGameId });
+            else if (seatKey) socket.emit('join.player', { gameId: params.gameId, token: readSeatToken() });
+          }
+          connectedBefore = true;
+        });
         animating = true;
         animate();
 

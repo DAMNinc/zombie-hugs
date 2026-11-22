@@ -171,12 +171,28 @@ export default class CamController {
       }
     };
 
+    this.removeListeners = () => {
+      window.removeEventListener('keydown', keyDownEvent);
+      window.removeEventListener('keyup', keyUpEvent);
+      window.removeEventListener('mousedown', mouseDownEvent);
+      window.removeEventListener('mouseup', mouseUpEvent);
+      window.removeEventListener('touchstart', touchStart);
+      window.removeEventListener('touchend', touchEnd);
+    };
     window.addEventListener('keydown', keyDownEvent);
     window.addEventListener('keyup', keyUpEvent);
     window.addEventListener('mousedown', mouseDownEvent);
     window.addEventListener('mouseup', mouseUpEvent);
     window.addEventListener('touchstart', touchStart, { passive: false });
     window.addEventListener('touchend', touchEnd, { passive: false });
+  }
+
+  private removeListeners: () => void = () => {};
+
+  /** Detach all window input listeners (call before replacing this controller). */
+  dispose(): void {
+    this.removeListeners();
+    this.removeListeners = () => {};
   }
 
   isSpectatorMode(): boolean {
