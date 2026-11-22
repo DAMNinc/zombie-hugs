@@ -11,5 +11,5 @@
     "declaration": false,
     "sourceMap": true
   },
-  "exclude": ["node_modules", "dist", "public"]
+  "exclude": ["node_modules", "dist", "public", "vite.config.ts", "vitest.config.ts"]
 }
