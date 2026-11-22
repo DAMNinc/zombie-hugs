@@ -132,11 +132,12 @@ function getZombieModelFromCode(code: number): any {
       zombieModel = models!.getHorde();
       break;
   }
-  return zombieModel;
+  // Unknown weapon codes fall back to the fox model.
+  return zombieModel || models!.getZombie();
 }
 
-function createFoxFromModel(direction: number, position: any, model: any, name?: string, weaponCode?: number): Fox {
-  const fox = new Fox(direction, model, name, weaponCode);
+function createFoxFromModel(direction: number, position: any, model: any, name?: string, weaponCode?: number, health?: number, speed?: number): Fox {
+  const fox = new Fox(direction, model, name, weaponCode, health, speed);
 
   fox.foxObj.mesh.position.x = position.x + model.offset.x;
   fox.foxObj.mesh.position.y = position.y - 50 + model.offset.y;
@@ -171,18 +172,54 @@ function setWeapon(player: Player, code: number): void {
   startPosition.y += 50;
   startPosition.x += player.getDirection() * -1 * 25;
 
-  const currentWeaponMesh = player.getCurrentWeapon();
-  if (currentWeaponMesh) {
-    scene.remove(currentWeaponMesh.getMesh());
-  }
-
+  // Build the new mesh first so a failure never leaves the player without a weapon.
   const fox = createFoxFromModel(player.getDirection() * -1, startPosition, zombieModel);
   fox.setSpeed(0);
   const s = 0.25 * (zombieModel.scale || 1);
   fox.getMesh().scale.set(s, s, s);
+
+  const currentWeaponMesh = player.getCurrentWeapon();
+  if (currentWeaponMesh) {
+    scene.remove(currentWeaponMesh.getMesh());
+  }
   scene.add(fox.getMesh());
 
   player.setWeapon(code, fox);
+}
+
+function addZombie(zombie: any, playerId: string | undefined, playSound: boolean): void {
+  if (gameState.zombies[zombie.id]) return;
+  const weaponCode = zombie.weaponCode || (playerId && gameState.players[playerId]?.getWeaponCode()) || 1;
+  const zombieModel = getZombieModelFromCode(weaponCode);
+
+  const fox = createFoxFromModel(zombie.direction, zombie.position, zombieModel, zombie.name, weaponCode, zombie.health, zombie.speed);
+  if (zombieModel.scale) {
+    const s = zombieModel.scale;
+    fox.getMesh().scale.set(s, s, s);
+  }
+
+  // Scale up based on charge ratio (0 = normal, 1 = up to 2x size)
+  const chargeRatio = zombie.chargeRatio || 0;
+  if (chargeRatio > 0.1) {
+    const chargeScale = 1 + chargeRatio; // 1.0 to 2.0x
+    const mesh = fox.getMesh();
+    mesh.scale.set(
+      mesh.scale.x * chargeScale,
+      mesh.scale.y * chargeScale,
+      mesh.scale.z * chargeScale,
+    );
+  }
+
+  scene.add(fox.getMesh());
+  gameState.zombies[zombie.id] = fox;
+
+  if (playSound && audio) {
+    if (chargeRatio > 0.3) {
+      audio.play('charged_fire');
+    } else {
+      audio.play('fire');
+    }
+  }
 }
 
 function getOpponentId(): string | null {
@@ -335,38 +372,7 @@ function setupEvents(): void {
   // Event for receiving information about zombies.
   socket.on('zombie', (zombie: any, playerId: string) => {
     gameConsole.log('Zombie added for ' + playerId);
-
-    const weaponCode = zombie.weaponCode || gameState.players[playerId]?.getWeaponCode() || 1;
-    const zombieModel = getZombieModelFromCode(weaponCode);
-
-    const fox = createFoxFromModel(zombie.direction, zombie.position, zombieModel, zombie.name, weaponCode);
-    if (zombieModel.scale) {
-      const s = zombieModel.scale;
-      fox.getMesh().scale.set(s, s, s);
-    }
-
-    // Scale up based on charge ratio (0 = normal, 1 = up to 2x size)
-    const chargeRatio = zombie.chargeRatio || 0;
-    if (chargeRatio > 0.1) {
-      const chargeScale = 1 + chargeRatio; // 1.0 to 2.0x
-      const mesh = fox.getMesh();
-      mesh.scale.set(
-        mesh.scale.x * chargeScale,
-        mesh.scale.y * chargeScale,
-        mesh.scale.z * chargeScale,
-      );
-    }
-
-    scene.add(fox.getMesh());
-    gameState.zombies[zombie.id] = fox;
-
-    if (audio) {
-      if (chargeRatio > 0.3) {
-        audio.play('charged_fire');
-      } else {
-        audio.play('fire');
-      }
-    }
+    addZombie(zombie, playerId, true);
   });
 
   // Event for receiving player information from the server.
@@ -442,11 +448,16 @@ function setupEvents(): void {
   socket.on('state', (state: any) => {
     for (const key in state.zombies) {
       const serverZombie = state.zombies[key];
+      if (!serverZombie) continue;
       const clientZombie = gameState.zombies[key];
-      if (!serverZombie || !clientZombie) {
+      if (!clientZombie) {
+        // Exists on the server but not locally (missed spawn): create it.
+        addZombie(serverZombie, undefined, false);
         continue;
       }
       clientZombie.setPosition(serverZombie.position);
+      // Server is authoritative for health
+      if (typeof serverZombie.health === 'number') clientZombie.health = serverZombie.health;
       // Sync speed (can change from kill buffs, hazards, sudden death)
       if (serverZombie.speed && clientZombie.speed !== serverZombie.speed) {
         clientZombie.setSpeed(serverZombie.speed);
@@ -539,15 +550,10 @@ function setupEvents(): void {
     if (audio) audio.play('collision');
     if (killFeed) killFeed.add(`${zombie1.name} vs ${zombie2.name}`, '#ff8800');
 
+    // Creatures are not removed here: the collision event does not say who died.
+    // The server's next `state` (which omits dead creatures) removes them.
     zombie1.health -= 1;
-    if (zombie1.health <= 0) {
-      removeZombie(zombieId1);
-    }
-
     zombie2.health -= 1;
-    if (zombie2.health <= 0) {
-      removeZombie(zombieId2);
-    }
   });
 
   socket.on('zombie.out-of-bounds', (zombieId: string, firedByPlayerId: string) => {
