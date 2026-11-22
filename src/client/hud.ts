@@ -420,6 +420,8 @@ export default class HUD {
     setTimeout(() => this.hideCountdown(), 800);
   }
 
+  private roundEndTimer: ReturnType<typeof setTimeout> | null = null;
+
   showRoundEnd(winnerName: string, round: number, iWon: boolean): void {
     this.gameOverOverlay.style.display = 'flex';
     this.gameOverOverlay.innerHTML = `
@@ -433,12 +435,15 @@ export default class HUD {
         Next round starting...
       </div>
     `;
-    setTimeout(() => {
+    if (this.roundEndTimer) clearTimeout(this.roundEndTimer);
+    this.roundEndTimer = setTimeout(() => {
+      this.roundEndTimer = null;
       this.gameOverOverlay.style.display = 'none';
     }, 2500);
   }
 
   showMatchOver(winnerName: string, iWon: boolean, roundWins: Record<string, number>, stats: Record<string, any>, myId: string, opponentId: string, elo?: Record<string, number>, leaderboard?: Array<{ name: string; elo: number }>): void {
+    this.cancelRoundEndTimer();
     const myStats = stats[myId] || {};
     const oppStats = stats[opponentId] || {};
     const myElo = elo?.[myId] || '';
@@ -490,7 +495,15 @@ export default class HUD {
     `;
   }
 
+  private cancelRoundEndTimer(): void {
+    if (this.roundEndTimer) {
+      clearTimeout(this.roundEndTimer);
+      this.roundEndTimer = null;
+    }
+  }
+
   hideMatchOver(): void {
+    this.cancelRoundEndTimer();
     this.gameOverOverlay.style.display = 'none';
   }
 

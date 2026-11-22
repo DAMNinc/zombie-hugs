@@ -58,9 +58,8 @@ function updateGameState(elapsed: number): void {
     return false;
   });
 
-  if (screenShake) {
-    screenShake.update(elapsed);
-  }
+  // Take last frame's shake offset off the camera before the controller moves it; re-apply after.
+  if (screenShake) screenShake.clear();
 
   if (camController != null) {
     camController.update(elapsed);
@@ -77,6 +76,8 @@ function updateGameState(elapsed: number): void {
       }
     }
   }
+
+  if (screenShake) screenShake.update(elapsed);
 
   // Update shield cooldown display
   if (hud && camController && !camController.isSpectatorMode()) {
@@ -540,8 +541,8 @@ function setupEvents(): void {
       const oppPlayer = opponentId ? state.players[opponentId] : null;
 
       if (myPlayer) {
-        hud.updateScore(myPlayer.score, oppPlayer?.score || 0);
-        hud.updateHP(myPlayer.hp, oppPlayer?.hp || Constants.MAX_HP);
+        hud.updateScore(myPlayer.score, oppPlayer?.score ?? 0);
+        hud.updateHP(myPlayer.hp, oppPlayer?.hp ?? Constants.MAX_HP);
       }
 
       if (state.round) {
@@ -709,6 +710,9 @@ function setupEvents(): void {
     if (hud) hud.hideMatchOver();
     for (const key in gameState.zombies) {
       removeZombie(key);
+    }
+    for (const pid in shieldMeshes) {
+      removeShieldMesh(pid);
     }
     clearArenaFeatures();
     gameState.shieldCooldownUntil = 0;

@@ -996,11 +996,14 @@ class Game {
           this.emitAll('zombie.collision', zombie.id, otherZombie.id);
           this.recordReplay('zombie.collision', { a: zombie.id, b: otherZombie.id });
 
-          if (this.stats[zombie.firedByPlayer]) this.stats[zombie.firedByPlayer].zombiesDestroyed++;
-          if (this.stats[otherZombie.firedByPlayer]) this.stats[otherZombie.firedByPlayer].zombiesDestroyed++;
-
           this.zombies[key].health -= 1;
           this.zombies[otherKey].health -= 1;
+
+          // Credit each kill to the owner of the creature that landed the hit.
+          if (zombie.firedByPlayer !== otherZombie.firedByPlayer) {
+            if (this.zombies[key].health <= 0 && this.stats[otherZombie.firedByPlayer]) this.stats[otherZombie.firedByPlayer].zombiesDestroyed++;
+            if (this.zombies[otherKey].health <= 0 && this.stats[zombie.firedByPlayer]) this.stats[zombie.firedByPlayer].zombiesDestroyed++;
+          }
 
           // Creature ability on kill: surviving creature gets a buff
           if (this.zombies[key].health <= 0 && this.zombies[otherKey].health > 0) {
