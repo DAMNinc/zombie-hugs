@@ -1,0 +1,72 @@
+:root {
+  color-scheme: dark;
+  font: 16px/1.35 system-ui, sans-serif;
+  background: #101d20;
+  color: #f1f7e9;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(320px, 1fr) auto;
+}
+.status, footer { padding: 10px clamp(12px, 3vw, 36px); }
+.status, .controls, dl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.status { justify-content: space-between; }
+h1 { font-size: clamp(1rem, 2.6vw, 1.5rem); margin: 0; }
+a { color: #b8e3e0; }
+dl, p, dd { margin: 0; }
+dl { gap: clamp(10px, 3vw, 30px); }
+dt { font-size: .75rem; color: #b8c9c3; }
+dd { font-size: 1.12rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+main { position: relative; overflow: hidden; background: #243e3d; }
+canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; }
+#wave, #chain {
+  position: absolute;
+  pointer-events: none;
+  background: #101d20eb;
+  border-radius: 5px;
+  padding: 5px 9px;
+  top: 8px;
+  z-index: 1;
+}
+#wave { left: 10px; }
+#chain { right: 10px; color: #ffde8b; }
+#chain:empty { display: none; }
+#outcome {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  background: #101d20dd;
+}
+footer { display: grid; gap: 7px; }
+#build-tools { display: grid; gap: 6px; }
+button {
+  border: 1px solid #5e8782;
+  background: #253f3d;
+  color: inherit;
+  padding: 6px 10px;
+  min-height: 40px;
+  border-radius: 5px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+button[aria-pressed="true"], #start, #retry { background: #c7eb99; color: #16281c; }
+button:disabled { opacity: .45; cursor: default; }
+#placement, #help { color: #c2d6cf; font-size: .85rem; }
+#placement { flex: 1; }
+progress { width: min(140px, 28vw); accent-color: #ffce74; }
+@media (max-width: 570px) {
+  .status { gap: 4px 12px; justify-content: flex-start; }
+  dl { flex-basis: 100%; }
+  footer, .status { padding-block: 6px; }
+  .controls { gap: 5px; }
+  #shop button { flex: 1; font-size: .78rem; padding-inline: 4px; }
+}

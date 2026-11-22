@@ -50,6 +50,10 @@ app.get('/', (_req, res) => {
   res.render('index', data);
 });
 
+app.get('/solo', (_req, res) => {
+  res.render('solo', { layout: false });
+});
+
 app.post('/game', (req, res) => {
   const gameId = controller.newGame(req.body.gameName);
   if (gameId === null) {
