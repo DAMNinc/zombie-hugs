@@ -1,5 +1,7 @@
-import { escapeHtml as esc, safeColor, isRanked, RoomMode } from './lobbyModel';
+import { escapeHtml as esc, isRanked, RoomMode } from './lobbyModel';
 import Constants from './constants';
+import BrawlHud from './brawlHud';
+import { StandingRow, resultsTableHtml } from './brawlModel';
 
 const HINT_KEY = 'zombieHugsControlsHintSeen';
 
@@ -46,9 +48,11 @@ export default class HUD {
   private eloDisplay: HTMLDivElement;
   private cameraModeIndicator: HTMLDivElement;
   private spectatorPanel: HTMLDivElement;
+  readonly brawl: BrawlHud;
 
   constructor(isSpectator: boolean = false) {
     this.isSpectator = isSpectator;
+    this.brawl = new BrawlHud();
 
     // Main HUD container
     this.container = document.createElement('div');
@@ -160,7 +164,7 @@ export default class HUD {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       display: none; align-items: center; justify-content: center; flex-direction: column;
       background: rgba(0,0,0,0.8); color: #fff; font-size: 48px;
-      pointer-events: auto;
+      pointer-events: auto; overflow-y: auto; box-sizing: border-box; padding: 8px 0;
     `;
     this.container.appendChild(this.gameOverOverlay);
 
@@ -424,21 +428,21 @@ export default class HUD {
     }, 2500);
   }
 
-  showMatchOver(winnerName: string, iWon: boolean, roundWins: Record<string, number>, stats: Record<string, any>, myId: string, opponentId: string, elo?: Record<string, number>, leaderboard?: Array<{ name: string; elo: number }>, extra?: { mode?: RoomMode; standings?: Array<{ id: string; name: string; color?: string; score: number }> }): void {
+  showMatchOver(winnerName: string, iWon: boolean, roundWins: Record<string, number>, stats: Record<string, any>, myId: string, opponentId: string, elo?: Record<string, number>, leaderboard?: Array<{ name: string; elo: number }>, extra?: { mode?: RoomMode; winnerId?: string; standings?: StandingRow[] }): void {
     this.cancelRoundEndTimer();
     const mode: RoomMode = extra?.mode || 'duel';
     const unranked = !isRanked(mode);
+    const winnerId = extra?.winnerId;
     const standings = extra?.standings;
     const myStats = stats[myId] || {};
     const oppStats = stats[opponentId] || {};
     const myElo = unranked ? '' : (elo?.[myId] || '');
     const oppElo = unranked ? '' : (elo?.[opponentId] || '');
-    // Brawl: a plain ordered list from the server's standings (richer rendering is up to the brawl HUD).
-    const standingsHtml = mode === 'brawl' && standings && standings.length
-      ? `<ol style="font-size: 16px; color: #ddd; text-align: left; margin: 0 0 8px; padding-left: 28px;">${standings.map((r) =>
-          `<li style="margin: 4px 0;${r.id === myId ? ' font-weight: bold; color: #ffcc00;' : ''}"><span style="color: ${safeColor(r.color)};">\u25CF</span> ${esc(r.name)} \u2014 ${r.score}</li>`).join('')}</ol>`
+    const brawl = mode === 'brawl';
+    const standingsHtml = brawl && standings && standings.length
+      ? resultsTableHtml(standings, myId, winnerId)
       : '';
-    const statsHtml = mode === 'brawl' ? '' : `
+    const statsHtml = brawl ? '' : `
       <table style="font-size: 14px; color: #ccc; border-collapse: collapse; min-width: min(400px, 90vw);">
         <tr style="border-bottom: 1px solid #444;">
           <th style="padding: 8px; text-align: left;">Stat</th>
@@ -468,12 +472,13 @@ export default class HUD {
     this.gameOverOverlay.style.display = 'flex';
     this.syncControlsHint();
     this.gameOverOverlay.innerHTML = `
-      <div style="font-size: 64px; color: ${iWon ? '#4caf50' : '#f44336'}; margin-bottom: 20px;">
+      ${brawl ? `<div style="font-size: min(48px, 11vw); color: #ffd700; margin-bottom: 8px; text-align: center; max-width: 94vw;">\uD83D\uDC51 ${iWon ? 'YOU WIN!' : esc(winnerName) + ' wins!'}</div>`
+        : `<div style="font-size: 64px; color: ${iWon ? '#4caf50' : '#f44336'}; margin-bottom: 20px;">
         ${iWon ? 'VICTORY!' : 'DEFEAT'}
       </div>
       <div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">
         ${esc(winnerName)} wins the match!
-      </div>
+      </div>`}
       ${unranked ? '<div style="font-size: 14px; color: #aaa; margin-bottom: 20px;">Unranked</div>' : ''}
       ${myElo ? `<div style="font-size: 14px; color: #ff0; margin-bottom: 20px;">Your ELO: ${myElo} | Opponent ELO: ${oppElo}</div>` : ''}
       ${standingsHtml}${statsHtml}

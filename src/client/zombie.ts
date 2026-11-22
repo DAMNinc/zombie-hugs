@@ -11,6 +11,7 @@ import HUD from './hud';
 import Audio from './audio';
 import ScreenShake from './screenshake';
 import KillFeed from './killfeed';
+import { attackerAngle, hitLine, StandingRow } from './brawlModel';
 import EasterEggs, { rareScore, RARE_SCORE_COLOR } from './easterEggs';
 import Lobby from './lobby';
 import PlayerTag from './playerTag';
@@ -374,6 +375,20 @@ function addPowerUpMesh(powerUp: any): void {
   const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(powerUp.position.x, 20, powerUp.position.z);
+  if (powerUp.central) {
+    // The central power-up is bigger and glows: a halo and a light beam so it reads from every edge.
+    mesh.userData.central = true;
+    mesh.scale.setScalar(3);
+    const halo = new THREE.Mesh(
+      new THREE.SphereGeometry(40, 16, 12),
+      new THREE.MeshBasicMaterial({ color: TELEGRAPH_COLOR, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.BackSide }),
+    );
+    mesh.add(halo);
+    const beam = makeBeacon(14, 420, 0.3);
+    beam.position.y = 20;
+    mesh.add(beam);
+    removeTelegraph();
+  }
   scene.add(mesh);
   powerUpMeshes[powerUp.id] = mesh;
 }
@@ -501,10 +516,12 @@ function clearRoundState(): void {
     hud.hidePowerUp();
     hud.hideUpgrade();
     hud.hideCombo();
+    hud.brawl.reset();
   }
 }
 
 function clearArenaFeatures(): void {
+  removeTelegraph();
   for (const id in powerUpMeshes) removePowerUpMesh(id);
   for (const id in wallMeshes) removeWallMesh(id);
   removeHazardMeshes();
@@ -698,9 +715,22 @@ function updateBrawlVisuals(): void {
       const g = edgeParts[e]?.glow.material as THREE.MeshBasicMaterial | undefined;
       if (g) g.opacity = 0;
     }
+    for (const id in gameState.players) if (id !== gameState.myId) gameState.players[id].getMesh().visible = true;
     return;
   }
   const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220);
+  if (telegraph) {
+    telegraph.mesh.scale.set(1 + 0.35 * pulse, 1, 1 + 0.35 * pulse);
+    ((telegraph.mesh.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.12 + 0.28 * pulse;
+  }
+  for (const id in powerUpMeshes) {
+    const m = powerUpMeshes[id];
+    if (m.userData.central) m.scale.setScalar(2.6 + 0.4 * pulse);
+  }
+  for (const id in gameState.players) {
+    // A knocked-out player's model is hidden until `player.respawn` (the seat tag stays, dimmed).
+    if (id !== gameState.myId) gameState.players[id].getMesh().visible = gameState.players[id].alive;
+  }
   const me = myPlayer();
   const targetId = me && !camController?.isSpectatorMode() ? me.targetId : null;
   for (const id in gameState.players) {
@@ -716,6 +746,52 @@ function updateBrawlVisuals(): void {
     const owner = playerForEdge(e);
     g.opacity = owner && owner.id === targetId ? 0.15 + 0.3 * pulse : 0;
   }
+}
+
+/** Brawl HUD from a `state` payload: standings, round clock, sudden-death roster, knocked-out dimming. */
+function updateBrawlHud(state: any): void {
+  if (!hud) return;
+  const live = state.mode === 'brawl' && !!gameState.myId && (state.phase === 'playing' || state.phase === 'sudden_death' || state.phase === 'countdown');
+  if (state.mode !== 'brawl') { hud.brawl.setActive(false); hud.brawl.reset(); }
+  else if (state.phase !== 'match_over') hud.brawl.setActive(live);
+  killFeed?.setMaxEntries(live ? (isTouch() ? 4 : 6) : 8);
+  if (!live) return;
+  hud.brawl.setMyId(gameState.myId);
+  const down = new Set<string>();
+  for (const id in state.players) if (state.players[id] && state.players[id].alive === false) down.add(id);
+  if (Array.isArray(state.standings)) hud.brawl.setStandings(state.standings as StandingRow[], down);
+  const sudden = state.phase === 'sudden_death';
+  const tied: string[] = sudden && Array.isArray(state.suddenPlayerIds) ? state.suddenPlayerIds.map((id: string) => getPlayerName(id)) : [];
+  hud.brawl.setRound(typeof state.roundRemainingMs === 'number' ? state.roundRemainingMs : 0, sudden, tied);
+}
+
+const TELEGRAPH_COLOR = 0xffd700;
+let telegraph: { id: string; mesh: THREE.Group } | null = null;
+
+function makeBeacon(radius: number, height: number, opacity: number): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: TELEGRAPH_COLOR, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false });
+  const col = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 24, 1, true), mat);
+  col.position.y = height / 2 - 40;
+  g.add(col);
+  return g;
+}
+
+function showTelegraph(data: any): void {
+  removeTelegraph();
+  const mesh = makeBeacon(70, 420, 0.25);
+  mesh.position.set(data.position?.x ?? 0, 0, data.position?.z ?? 0);
+  scene.add(mesh);
+  telegraph = { id: data.id, mesh };
+  hud?.brawl.telegraph(typeof data.spawnAt === 'number' ? data.spawnAt : Date.now() + 3000);
+}
+
+function removeTelegraph(): void {
+  if (!telegraph) return;
+  scene.remove(telegraph.mesh);
+  disposeObject(telegraph.mesh);
+  telegraph = null;
+  hud?.brawl.telegraph(0);
 }
 
 function buildPlayer(data: any, weaponCode: number): Player {
@@ -917,6 +993,8 @@ function setupEvents(): void {
       }
     }
 
+    updateBrawlHud(state);
+
     // Update HUD
     if (hud && gameState.myId) {
       const myPlayer = state.players[gameState.myId];
@@ -931,8 +1009,8 @@ function setupEvents(): void {
         hud.updateRound(state.round, state.roundWins, gameState.myId, opponentId || undefined);
       }
 
-      // Sudden death indicator
-      if (state.suddenDeath) {
+      // Sudden death indicator (brawl shows it in the round clock)
+      if (state.suddenDeath && state.mode !== 'brawl') {
         hud.showSuddenDeath();
       }
     }
@@ -972,7 +1050,7 @@ function setupEvents(): void {
     gameState.explosions.push(new Explosion(scene, zombie1.getMesh().position, wc));
 
     if (audio) audio.play('collision');
-    if (killFeed) killFeed.add(`${zombie1.name} vs ${zombie2.name}`, '#ff8800');
+    if (killFeed && arena !== 'square') killFeed.add(`${zombie1.name} vs ${zombie2.name}`, '#ff8800');
 
     // Creatures are not removed here: the collision event does not say who died.
     // The server's next `state` (which omits dead creatures) removes them.
@@ -980,15 +1058,24 @@ function setupEvents(): void {
     zombie2.health -= 1;
   });
 
-  socket.on('zombie.out-of-bounds', (zombieId: string, firedByPlayerId: string) => {
+  socket.on('zombie.out-of-bounds', (zombieId: string, firedByPlayerId: string, hitPlayerId?: string | null) => {
     const zombie = gameState.zombies[zombieId];
     if (!zombie) return;
 
     if (killFeed) {
       const scorerName = getPlayerName(firedByPlayerId);
-      const special = rareScore(easterEggs, audio, scorerName, zombie.name);
-      if (special) killFeed.add(special, RARE_SCORE_COLOR);
-      else killFeed.add(`${scorerName} scored! (${zombie.name})`, '#44ff44');
+      if (arena === 'square') {
+        // Brawl: "Bob ⟶ Cleo" in the attacker's seat colour; creatures that leave an empty edge are not news.
+        if (hitPlayerId) {
+          const victim = getPlayerName(hitPlayerId);
+          killFeed.add(hitLine(scorerName, victim), '#ffffff',
+            { badge: gameState.players[firedByPlayerId]?.color, mergeKey: `hit:${firedByPlayerId}>${hitPlayerId}`, format: (n) => hitLine(scorerName, victim, n) });
+        }
+      } else {
+        const special = rareScore(easterEggs, audio, scorerName, zombie.name);
+        if (special) killFeed.add(special, RARE_SCORE_COLOR);
+        else killFeed.add(`${scorerName} scored! (${zombie.name})`, '#44ff44');
+      }
     }
 
     if (audio) audio.play('score');
@@ -1068,10 +1155,13 @@ function setupEvents(): void {
     if (hud) {
       hud.showMatchOver(winnerName, iWon, data.roundWins || {}, data.stats || {}, gameState.myId, opponentId, data.elo, data.leaderboard, {
         mode: data.mode,
+        winnerId: data.winner,
         standings: data.standings,
       });
     }
     if (audio) audio.play('game_over');
+    removeTelegraph();
+    if (data.mode === 'brawl') hud?.brawl.showResults();
     if (killFeed) killFeed.add(iWon ? 'VICTORY!' : 'DEFEAT', iWon ? '#4caf50' : '#f44336');
 
     // Rematch / Back to lobby button handlers
@@ -1119,7 +1209,7 @@ function setupEvents(): void {
       hud.showCombo(count);
     }
     if (audio) audio.play('combo');
-    if (killFeed) killFeed.add(`${getPlayerName(playerId)} COMBO x${count}!`, '#ff0');
+    if (killFeed && arena !== 'square') killFeed.add(`${getPlayerName(playerId)} COMBO x${count}!`, '#ff0');
   });
 
   // Upgrade event
@@ -1127,14 +1217,53 @@ function setupEvents(): void {
     if (playerId === gameState.myId && hud) {
       hud.showUpgrade(level);
     }
-    if (killFeed) killFeed.add(`${getPlayerName(playerId)} creatures upgraded!`, '#ff0');
+    if (killFeed && arena !== 'square') killFeed.add(`${getPlayerName(playerId)} creatures upgraded!`, '#ff0');
   });
 
   // Damage event
-  socket.on('player.damage', (playerId: string, _newHp: number) => {
+  socket.on('player.damage', (playerId: string, _newHp: number, attackerId?: string) => {
     if (playerId === gameState.myId) {
       if (screenShake) screenShake.trigger(8);
       if (hud) hud.flashDamage();
+      const attacker = attackerId ? gameState.players[attackerId] : null;
+      const me = myPlayer();
+      if (hud && attacker && me && arena === 'square') {
+        hud.brawl.hit(attacker.name, attacker.color || '#ffffff', attackerAngle(me.view, attacker.view.edge));
+      }
+    }
+  });
+
+  // Brawl knockouts and respawns
+  socket.on('player.ko', (data: { id: string; by: string | null; respawnAt: number }) => {
+    const victim = gameState.players[data.id];
+    if (!victim) return;
+    victim.alive = false;
+    const byName = data.by && gameState.players[data.by] ? getPlayerName(data.by) : null;
+    if (killFeed) {
+      const line = byName ? `${byName} \u27F6 ${victim.name}  KO!` : `${victim.name} knocked out!`;
+      killFeed.add(line, '#ffffff', { strong: true, badge: data.by ? gameState.players[data.by]?.color : '#ffffff' });
+    }
+    if (data.id === gameState.myId) {
+      hud?.brawl.knockedOut(byName, data.respawnAt);
+      if (screenShake) screenShake.trigger(20);
+    }
+    refreshTargetUI();
+  });
+
+  socket.on('player.respawn', (playerId: string) => {
+    const p = gameState.players[playerId];
+    if (p) p.alive = true;
+    if (playerId === gameState.myId) hud?.brawl.respawned();
+    refreshTargetUI();
+  });
+
+  socket.on('powerup.telegraph', (data: any) => {
+    if (arena === 'square' && data && typeof data.id === 'string') showTelegraph(data);
+  });
+
+  socket.on('standings', (rows: StandingRow[]) => {
+    if (hud && Array.isArray(rows) && hud.brawl.isActive()) {
+      hud.brawl.setStandings(rows, new Set(Object.values(gameState.players).filter((p: any) => !p.alive).map((p: any) => p.id)));
     }
   });
 
@@ -1156,6 +1285,7 @@ function setupEvents(): void {
   });
 
   socket.on('powerup.collect', (puId: string, playerId: string, type: string) => {
+    const central = !!powerUpMeshes[puId]?.userData.central;
     removePowerUpMesh(puId);
     if (audio) audio.play('powerup');
     const name = getPlayerName(playerId);
@@ -1165,7 +1295,10 @@ function setupEvents(): void {
       heal: 'Heal',
       double_points: '2X Points',
     };
-    if (killFeed) killFeed.add(`${name} got ${labels[type] || type}!`, '#ff0');
+    if (killFeed) {
+      if (central) killFeed.add(`\u2605 ${name} captured the centre: ${labels[type] || type}!`, '#ffffff', { strong: true, badge: gameState.players[playerId]?.color });
+      else if (arena !== 'square') killFeed.add(`${name} got ${labels[type] || type}!`, '#ff0');
+    }
     if (playerId === gameState.myId && hud) {
       hud.showPowerUp(type);
     }
@@ -1173,7 +1306,7 @@ function setupEvents(): void {
 
   // Heal event
   socket.on('player.heal', (playerId: string, _newHp: number) => {
-    if (killFeed) killFeed.add(`${getPlayerName(playerId)} healed!`, '#ff0066');
+    if (killFeed && arena !== 'square') killFeed.add(`${getPlayerName(playerId)} healed!`, '#ff0066');
   });
 
   // Hazard events
@@ -1217,10 +1350,13 @@ function setupEvents(): void {
   });
 
   // Sudden death
-  socket.on('sudden.death', () => {
-    if (hud) hud.showSuddenDeath();
+  socket.on('sudden.death', (data?: { mode?: string; playerIds?: string[] }) => {
+    const brawl = data?.mode === 'brawl';
+    if (hud && !brawl) hud.showSuddenDeath();
     if (audio) audio.play('sudden_death');
-    if (killFeed) killFeed.add('SUDDEN DEATH! All creatures buffed!', '#ff0000');
+    if (killFeed) {
+      if (!brawl) killFeed.add('SUDDEN DEATH! All creatures buffed!', '#ff0000');
+    }
     if (screenShake) screenShake.trigger(20);
   });
 
@@ -1233,7 +1369,7 @@ function setupEvents(): void {
       juggernaut: 'Juggernaut',
       twin_strike: 'Twin Strike',
     };
-    if (killFeed) killFeed.add(`${getPlayerName(playerId)} triggered ${names[type] || type}!`, '#0ff');
+    if (killFeed && arena !== 'square') killFeed.add(`${getPlayerName(playerId)} triggered ${names[type] || type}!`, '#0ff');
     if (playerId === gameState.myId && hud) {
       hud.showSynergy(type);
     }
