@@ -3,7 +3,7 @@ zombie-hugs
 
 Fire those zombies away (actually, it's foxes right now).
 
-Requires Node.js 20 or newer.
+Requires Node.js 24 or newer.
 
     $ npm install
     $ npm run build
