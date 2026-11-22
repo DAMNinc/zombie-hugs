@@ -155,6 +155,10 @@ function getLeaderboard(): Array<{ name: string; elo: number }> {
 }
 
 let gameCounter = 0;
+const MAX_GAMES = 100;
+const MAX_GAME_NAME_LENGTH = 40;
+/** A game with no players and no spectators for this long is stopped and removed. */
+const EMPTY_GAME_TTL_MS = 60000;
 const games: Record<number, Game> = {};
 
 class Game {
@@ -182,6 +186,9 @@ class Game {
   lastSpectatorVote: number;
   countdownTimer: ReturnType<typeof setInterval> | null;
   roundResetTimer: ReturnType<typeof setTimeout> | null;
+  intervals: Array<ReturnType<typeof setInterval>>;
+  /** Last time someone joined or left; a game that stays empty for EMPTY_GAME_TTL_MS is deleted. */
+  lastActivity: number;
 
   constructor(id: number, gameName?: string) {
     this.id = id;
@@ -207,6 +214,8 @@ class Game {
     this.lastSpectatorVote = 0;
     this.countdownTimer = null;
     this.roundResetTimer = null;
+    this.intervals = [];
+    this.lastActivity = Date.now();
   }
 
   recordReplay(type: string, data: any) {
@@ -388,6 +397,7 @@ class Game {
     }
 
     logger.info('%s joined game %s as player', player.name, this.id);
+    this.lastActivity = Date.now();
 
     this.players[player.id] = player;
     this.roundWins[player.id] = 0;
@@ -701,6 +711,7 @@ class Game {
     delete this.players[player.id];
     delete this.roundWins[player.id];
     delete this.stats[player.id];
+    this.lastActivity = Date.now();
     if (this.phase !== 'lobby' && Object.keys(this.players).length < 2) {
       this.resetToLobby();
     }
@@ -717,6 +728,7 @@ class Game {
     }
 
     this.spectators[spectator.id] = spectator;
+    this.lastActivity = Date.now();
     const onSpectator = (event: string, handler: (...args: any[]) => void) => {
       spectator.socket.on(event, (...args: any[]) => {
         if (this.spectators[spectator.id] !== spectator) return;
@@ -725,6 +737,7 @@ class Game {
     };
     spectator.socket.on('disconnect', () => {
       delete this.spectators[spectator.id];
+      this.lastActivity = Date.now();
     });
     this.emitAll('spectator', spectator.toJSON());
 
@@ -789,6 +802,16 @@ class Game {
     if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
 
     this.updating = true;
+    try {
+      this.runUpdate(elapsed);
+    } catch (err) {
+      logger.error('Error in game %s update: %s', this.id, err instanceof Error ? (err.stack || err.message) : String(err));
+    } finally {
+      this.updating = false;
+    }
+  }
+
+  private runUpdate(elapsed: number) {
     const now = Date.now();
 
     // Spawn power-ups
@@ -984,8 +1007,6 @@ class Game {
         }
       }
     }
-
-    this.updating = false;
   }
 
   checkRoundEnd(): boolean {
@@ -1097,17 +1118,39 @@ class Game {
   }
 
   start() {
-    setInterval(() => {
-      this.emitAll('state', this.toJSON());
-    }, 200);
+    this.stop();
+    this.intervals.push(
+      setInterval(() => {
+        this.emitAll('state', this.toJSON());
+      }, 200),
+      setInterval(() => {
+        this.update(this.elapsed());
+      }, 100),
+      setInterval(() => {
+        this.checkPing();
+        this.removeIfAbandoned();
+      }, 5000),
+    );
+  }
 
-    setInterval(() => {
-      this.update(this.elapsed());
-    }, 100);
+  /** Clears every timer the game owns. Safe to call more than once. */
+  stop() {
+    for (const handle of this.intervals) clearInterval(handle);
+    this.intervals = [];
+    this.clearCountdown();
+    if (this.roundResetTimer) {
+      clearTimeout(this.roundResetTimer);
+      this.roundResetTimer = null;
+    }
+  }
 
-    setInterval(() => {
-      this.checkPing();
-    }, 5000);
+  /** Stops and deletes the game once it has had nobody in it for EMPTY_GAME_TTL_MS. */
+  removeIfAbandoned() {
+    if (Object.keys(this.players).length > 0 || Object.keys(this.spectators).length > 0) return;
+    if (Date.now() - this.lastActivity < EMPTY_GAME_TTL_MS) return;
+    logger.info('Removing empty game %s', this.id);
+    this.stop();
+    if (games[this.id] === this) delete games[this.id];
   }
 
   checkPing() {
@@ -1337,9 +1380,12 @@ class Zombie {
   }
 }
 
-function createGame(gameName?: string): number {
+/** Returns the new game's id, or null when MAX_GAMES live games already exist. */
+function createGame(gameName?: string): number | null {
+  if (Object.keys(games).length >= MAX_GAMES) return null;
+  const name = typeof gameName === 'string' ? gameName.trim().slice(0, MAX_GAME_NAME_LENGTH).trim() : '';
   const gameId = gameCounter++;
-  games[gameId] = new Game(gameId, gameName);
+  games[gameId] = new Game(gameId, name || undefined);
   games[gameId].start();
   return gameId;
 }
@@ -1416,7 +1462,7 @@ function setupSocket(socket: Socket) {
   });
 }
 
-export { assignSide, Game, Player, Zombie, PlayerStats, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard };
+export { MAX_GAMES, MAX_GAME_NAME_LENGTH, EMPTY_GAME_TTL_MS, assignSide, Game, Player, Zombie, PlayerStats, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard };
 
 export default {
   setupSocket,
