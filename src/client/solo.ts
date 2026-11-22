@@ -27,6 +27,8 @@ let building = true;
 let selected = -1;
 let kind: DefenceKind = 'launcher';
 let holding: { pointer: number; lane: Lane; started: number } | undefined;
+let padTap: { pointer: number; pad: number; x: number; y: number } | undefined;
+const tapSlop = 8;
 let showingOutcome = false;
 
 const shop = Object.entries(DEFENCES).map(([key, info]) => {
@@ -49,6 +51,7 @@ function cancelCharge() {
 
 function setView(build: boolean) {
   cancelCharge();
+  padTap = undefined;
   building = build;
   updateHud();
 }
@@ -57,7 +60,10 @@ camera.addEventListener('click', () => setView(!building));
 window.addEventListener('keydown', event => {
   if (event.code === 'KeyV' && !event.repeat && !showingOutcome) setView(!building);
 });
-window.addEventListener('blur', cancelCharge);
+window.addEventListener('blur', () => {
+  cancelCharge();
+  padTap = undefined;
+});
 
 start.addEventListener('click', () => {
   if (state.startWave()) setView(false);
@@ -75,12 +81,16 @@ element('retry').addEventListener('click', () => {
   start.focus();
 });
 
-// Pointer Events keep mouse and touch on the same gesture path. Only the canvas can begin a shot.
 arena.canvas.addEventListener('pointerdown', event => {
   if (!event.isPrimary || event.button !== 0 || showingOutcome) return;
   if (building) {
-    selected = arena.padAt(arena.padPoint(event));
-    updateHud();
+    const pad = arena.padAt(arena.padPoint(event));
+    if (event.pointerType === 'touch') {
+      padTap = { pointer: event.pointerId, pad, x: event.clientX, y: event.clientY };
+    } else {
+      selected = pad;
+      updateHud();
+    }
     return;
   }
   if (state.phase !== 'wave' || state.cooldown > 0) return;
@@ -90,7 +100,25 @@ arena.canvas.addEventListener('pointerdown', event => {
   arena.canvas.setPointerCapture(event.pointerId);
 });
 
+function discardDraggedTap(event: PointerEvent) {
+  if (padTap?.pointer === event.pointerId &&
+      Math.hypot(event.clientX - padTap.x, event.clientY - padTap.y) > tapSlop) {
+    padTap = undefined;
+  }
+}
+
+arena.canvas.addEventListener('pointermove', discardDraggedTap);
 arena.canvas.addEventListener('pointerup', event => {
+  discardDraggedTap(event);
+  if (padTap?.pointer === event.pointerId) {
+    const { pad } = padTap;
+    padTap = undefined;
+    if (building && !showingOutcome) {
+      selected = pad;
+      updateHud();
+    }
+    return;
+  }
   if (event.pointerId !== holding?.pointer) return;
   const bounds = arena.canvas.getBoundingClientRect();
   const onArena = event.clientX >= bounds.left && event.clientX <= bounds.right &&
@@ -100,6 +128,7 @@ arena.canvas.addEventListener('pointerup', event => {
 });
 for (const type of ['pointercancel', 'lostpointercapture'] as const) {
   arena.canvas.addEventListener(type, event => {
+    if (event.pointerId === padTap?.pointer) padTap = undefined;
     if (event.pointerId === holding?.pointer) cancelCharge();
   });
 }
@@ -135,8 +164,11 @@ function updateHud() {
       const pressed = String(item.key === kind);
       if (item.button.getAttribute('aria-pressed') !== pressed) item.button.setAttribute('aria-pressed', pressed);
     }
-    write(placement, selected < 0 ? 'Choose a pad to see the range and cost.'
-      : preview.reason || (preview.upgrade ? `${info.perk} · ${preview.cost} scrap` : `${info.name} · ${preview.cost} scrap`));
+    const price = `${preview.cost} scrap`;
+    const description = preview.upgrade
+      ? `${preview.reason || info.perk} · ${price}`
+      : preview.reason || `${info.name} · ${price}`;
+    write(placement, selected < 0 ? 'Choose a pad to see the range and cost.' : description);
     write(confirm, preview.upgrade ? 'Upgrade' : 'Build');
     confirm.disabled = !!preview.reason;
   }
