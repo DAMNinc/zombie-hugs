@@ -13,7 +13,7 @@ import HUD from './hud';
 import Audio from './audio';
 import ScreenShake from './screenshake';
 import KillFeed from './killfeed';
-import EasterEggs from './easterEggs';
+import EasterEggs, { rareScore, RARE_SCORE_COLOR } from './easterEggs';
 import { parseLegacyJSON } from './LegacyJSONLoader';
 
 // Expose THREE and helpers globally for non-bundled scripts (gallery.js)
@@ -561,7 +561,9 @@ function setupEvents(): void {
 
     if (killFeed) {
       const scorerName = getPlayerName(firedByPlayerId);
-      killFeed.add(`${scorerName} scored! (${zombie.name})`, '#44ff44');
+      const special = rareScore(easterEggs, audio, scorerName, zombie.name);
+      if (special) killFeed.add(special, RARE_SCORE_COLOR);
+      else killFeed.add(`${scorerName} scored! (${zombie.name})`, '#44ff44');
     }
 
     if (audio) audio.play('score');

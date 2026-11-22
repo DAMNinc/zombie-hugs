@@ -17,10 +17,11 @@ In-game eggs (a, d) are desktop-keyboard only, for players and spectators. They 
 - Code: `views/index.handlebars` inline script (planned; not part of the vite bundle).
 
 ## (c) Rare special score (~1%)
-- Trigger: a scored point, ~1% chance.
-- Effect: special killfeed message and/or special creature look.
-- Safety: purely visual, no effect on the score itself.
-- Code: `src/client/zombie.ts` score handler + `src/client/easterEggs.ts` (planned).
+- Trigger: a scored point (`zombie.out-of-bounds`), `Math.random() < 0.01`.
+- Effect: a random silly hug line replaces the normal "X scored!" killfeed entry (pink), plus a short two-note 'hug' chirp (~0.4 s) alongside the normal score sound.
+- Safety: client-local and cosmetic; only while the egg system is in the active phase (`EasterEggs.isActive()`); at least 10 s between specials; no effect on score, state, sockets or replay.
+- Code: `rareScore()` in `src/client/easterEggs.ts` (random and clock injectable), called from the score handler in `src/client/zombie.ts`; sound `'hug'` in `src/client/audio.ts`.
+- Dev: to force it, temporarily edit `RARE_SCORE_CHANCE` or override `Math.random` in devtools; never commit that.
 
 ## (d) "brains"
 - Trigger: type b-r-a-i-n-s in sequence during a game (letters only; the sequence resets after a gap of more than 2 s).

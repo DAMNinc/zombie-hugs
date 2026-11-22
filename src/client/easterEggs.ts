@@ -137,6 +137,44 @@ const EGGS: Egg[] = [
   konamiEgg,
 ];
 
+// --- Rare special score (~1%) -------------------------------------------
+
+const RARE_SCORE_CHANCE = 0.01;
+const RARE_SCORE_COOLDOWN_MS = 10000;
+export const RARE_SCORE_COLOR = '#ff69b4';
+
+const RARE_SCORE_LINES: Array<(scorer: string, creature: string) => string> = [
+  (scorer) => `${scorer} gave the zombie a big hug 🤗`,
+  (_scorer, creature) => `${creature} got a surprise hug!`,
+  () => 'Hug of the century! 🤗',
+  (scorer) => `${scorer} is a certified hug professional`,
+  (_scorer, creature) => `${creature} wanted a hug all along`,
+  () => 'Zombies need love too 💚',
+];
+
+let lastRareScoreAt: number | undefined;
+
+// Called from the score handler. Returns the special killfeed line (and plays
+// the 'hug' chirp) for ~1% of scored points, otherwise null. Cosmetic only: it
+// never touches score, game state or sockets. `random` and `now` are
+// injectable so a dev can force or test it.
+export function rareScore(
+  eggs: EasterEggs | null,
+  audio: Audio | null,
+  scorerName: string,
+  creatureName: string,
+  random: () => number = Math.random,
+  now: number = Date.now(),
+): string | null {
+  if (!eggs || !eggs.isActive()) return null;
+  if (lastRareScoreAt !== undefined && now - lastRareScoreAt < RARE_SCORE_COOLDOWN_MS) return null;
+  if (!(random() < RARE_SCORE_CHANCE)) return null;
+  lastRareScoreAt = now;
+  if (audio) audio.play('hug');
+  const pick = RARE_SCORE_LINES[Math.floor(random() * RARE_SCORE_LINES.length) % RARE_SCORE_LINES.length];
+  return pick(scorerName, creatureName);
+}
+
 export default class EasterEggs {
   private audio: Audio | null;
   private getCreatures: () => Record<string, any>;
@@ -162,6 +200,10 @@ export default class EasterEggs {
       this.buffer = [];
       this.finish();
     }
+  }
+
+  isActive(): boolean {
+    return this.active;
   }
 
   destroy(): void {
