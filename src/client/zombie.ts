@@ -11,6 +11,7 @@ import HUD from './hud';
 import Audio from './audio';
 import ScreenShake from './screenshake';
 import KillFeed from './killfeed';
+import EasterEggs, { rareScore, RARE_SCORE_COLOR } from './easterEggs';
 import { disposeObject } from './dispose';
 import { parseLegacyJSON } from './LegacyJSONLoader';
 
@@ -33,6 +34,7 @@ let screenShake: ScreenShake | null = null;
 // Mirrors SHIELD_COOLDOWN_MS in lib/controller.ts.
 const SHIELD_COOLDOWN_MS = 15000;
 let killFeed: KillFeed | null = null;
+let easterEggs: EasterEggs | null = null;
 let shieldMeshes: Record<string, any> = {};
 let pingStart: number = 0;
 const socket = io();
@@ -552,6 +554,8 @@ function setupEvents(): void {
   });
 
   socket.on('state', (state: any) => {
+    // Covers spectators/reloads joining mid-round (state is broadcast every 200 ms)
+    if (easterEggs) easterEggs.setPhase(state.phase === 'playing' || state.phase === 'sudden_death');
     for (const key in state.zombies) {
       const serverZombie = state.zombies[key];
       if (!serverZombie) continue;
@@ -672,7 +676,9 @@ function setupEvents(): void {
 
     if (killFeed) {
       const scorerName = getPlayerName(firedByPlayerId);
-      killFeed.add(`${scorerName} scored! (${zombie.name})`, '#44ff44');
+      const special = rareScore(easterEggs, audio, scorerName, zombie.name);
+      if (special) killFeed.add(special, RARE_SCORE_COLOR);
+      else killFeed.add(`${scorerName} scored! (${zombie.name})`, '#44ff44');
     }
 
     if (audio) audio.play('score');
@@ -705,6 +711,7 @@ function setupEvents(): void {
   socket.on('player.exit', (playerId: string) => {
     const player = gameState.players[playerId];
     if (!player) return;
+    if (easterEggs) easterEggs.setPhase(false);
     scene.remove(player.getMesh());
     delete gameState.players[playerId];
     // The opponent (not me) left: wait for a replacement.
@@ -713,16 +720,19 @@ function setupEvents(): void {
 
   // Game lifecycle events
   socket.on('game.countdown', (seconds: number) => {
+    if (easterEggs) easterEggs.setPhase(false);
     if (hud) hud.showCountdown(seconds);
     if (audio) audio.play('countdown');
   });
 
   socket.on('game.start', () => {
+    if (easterEggs) easterEggs.setPhase(true);
     if (hud) hud.showGameStart();
     if (audio) audio.play('game_start');
   });
 
   socket.on('round.end', (data: any) => {
+    if (easterEggs) easterEggs.setPhase(false);
     if (hud) {
       const iWon = data.winner === gameState.myId;
       const winnerName = getPlayerName(data.winner);
@@ -734,10 +744,12 @@ function setupEvents(): void {
   });
 
   socket.on('round.reset', () => {
+    if (easterEggs) easterEggs.setPhase(false);
     clearRoundState();
   });
 
   socket.on('match.over', (data: any) => {
+    if (easterEggs) easterEggs.setPhase(false);
     const iWon = data.winner === gameState.myId;
     const winnerName = getPlayerName(data.winner);
     const opponentId = getOpponentId() || '';
@@ -1049,6 +1061,7 @@ function init(renderAreaId: string, isSpectator: boolean): void {
   audio = new Audio();
   screenShake = new ScreenShake(camera);
   killFeed = new KillFeed();
+  easterEggs = new EasterEggs(audio, () => gameState.zombies);
   hud = new HUD(isSpectator);
 
   handleResize();

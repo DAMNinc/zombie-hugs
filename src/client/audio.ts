@@ -1,4 +1,4 @@
-type SoundName = 'fire' | 'collision' | 'score' | 'damage' | 'weapon_switch' | 'countdown' | 'game_start' | 'game_over' | 'shield' | 'combo' | 'powerup' | 'sudden_death' | 'synergy' | 'wall' | 'charged_fire';
+type SoundName = 'fire' | 'collision' | 'score' | 'damage' | 'weapon_switch' | 'countdown' | 'game_start' | 'game_over' | 'shield' | 'combo' | 'powerup' | 'sudden_death' | 'synergy' | 'wall' | 'charged_fire' | 'groan' | 'fanfare' | 'hug';
 
 // Procedurally generated sound effects using Web Audio API
 export default class Audio {
@@ -89,7 +89,52 @@ export default class Audio {
         this.playTone(300, 0.15, 'square', 0.4);
         setTimeout(() => this.playTone(400, 0.1, 'square', 0.3), 100);
         break;
+      case 'groan':
+        this.playGroan();
+        break;
+      case 'hug':
+        // Cute two-note chirp (~0.4 s)
+        this.playTone(880, 0.15, 'sine', 0.3);
+        setTimeout(() => this.playTone(1318, 0.25, 'sine', 0.3), 150);
+        break;
+      case 'fanfare':
+        this.playTone(523, 0.15, 'square', 0.25);
+        setTimeout(() => this.playTone(659, 0.15, 'square', 0.25), 150);
+        setTimeout(() => this.playTone(784, 0.15, 'square', 0.25), 300);
+        setTimeout(() => this.playTone(1047, 0.2, 'square', 0.25), 450);
+        setTimeout(() => this.playTone(1319, 0.5, 'square', 0.3), 700);
+        break;
     }
+  }
+
+  // Zombie groan: low sawtooth sliding down with a slow wobble (~1.2 s).
+  private playGroan(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dur = 1.2;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(120, t);
+    osc.frequency.linearRampToValueAtTime(80, t + dur);
+    lfo.frequency.value = 6;
+    lfoGain.gain.value = 10;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+
+    gain.gain.setValueAtTime(0.01, t);
+    gain.gain.linearRampToValueAtTime(0.4, t + 0.2);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + dur);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    lfo.start(t);
+    osc.stop(t + dur);
+    lfo.stop(t + dur);
   }
 
   private playTone(freq: number, duration: number, type: OscillatorType, volume: number): void {

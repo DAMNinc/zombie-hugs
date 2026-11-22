@@ -188,6 +188,17 @@
   }
   .col-main { flex: 2; min-width: 0; }
   .col-side { flex: 1; min-width: 260px; }
+  .hug-rain-item {
+    position: fixed;
+    top: -60px;
+    pointer-events: none;
+    z-index: 9999;
+    line-height: 1;
+    animation: hug-rain-fall linear forwards;
+  }
+  @keyframes hug-rain-fall {
+    to { transform: translateY(115vh) rotate(360deg); }
+  }
 </style>
 {{/section}}
 
@@ -358,3 +369,51 @@
     </div>
   </div>
 </div>
+
+<script>
+(function () {
+  var title = document.querySelector('.hero h1');
+  if (!title) return;
+  var CLICKS = 5, WINDOW_MS = 3000, COOLDOWN_MS = 12000, RAIN_MS = 5000;
+  var clicks = [];
+  var blockedUntil = 0;
+  var running = false;
+
+  function rain() {
+    running = true;
+    blockedUntil = Date.now() + COOLDOWN_MS;
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) { running = false; return; }
+    var items = [];
+    for (var i = 0; i < 36; i++) {
+      var el = document.createElement('span');
+      el.className = 'hug-rain-item';
+      el.setAttribute('aria-hidden', 'true');
+      el.textContent = Math.random() < 0.6 ? '\uD83E\uDD17' : '\uD83E\uDDDF';
+      el.style.left = (Math.random() * 96) + 'vw';
+      el.style.fontSize = (20 + Math.random() * 28) + 'px';
+      el.style.animationDuration = (2 + Math.random() * 2) + 's';
+      el.style.animationDelay = (Math.random() * 1) + 's';
+      document.body.appendChild(el);
+      items.push(el);
+    }
+    setTimeout(function () {
+      items.forEach(function (el) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+      running = false;
+    }, RAIN_MS);
+  }
+
+  title.addEventListener('click', function () {
+    var now = Date.now();
+    if (running || now < blockedUntil) { clicks = []; return; }
+    clicks.push(now);
+    clicks = clicks.filter(function (t) { return now - t <= WINDOW_MS; });
+    if (clicks.length >= CLICKS) {
+      clicks = [];
+      rain();
+    }
+  });
+})();
+</script>
