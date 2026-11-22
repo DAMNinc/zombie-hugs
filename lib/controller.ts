@@ -8,6 +8,7 @@ import {
 } from 'unique-names-generator';
 import type { Socket } from 'socket.io';
 import logger from './logger';
+import { BotBrain } from './bot';
 import { ARENA_HALF_WIDTH, ARENA_MARGIN, MAX_CHARGE_MS, clampArenaX, effectiveCharge, isFiniteNumber, validFireX, validToken, validWeaponCode } from './validate';
 
 interface Position {
@@ -185,6 +186,8 @@ class Game {
   stats: Record<string, PlayerStats>;
   /** Mode the room plays (decided by headcount at countdown); in the lobby, the mode it would start in. */
   mode: GameMode;
+  /** Drives the practice bot in solo; null otherwise. */
+  botBrain: BotBrain | null = null;
   /** Late arrivals waiting for a seat, in join order. They are also in `spectators`. */
   queue: Player[];
 
@@ -817,6 +820,7 @@ class Game {
     if (this.mode === 'solo' && !Object.values(this.players).some(p => p.isBot)) {
       const bot = createBot(this);
       this.players[bot.id] = bot;
+      this.botBrain = new BotBrain(this, bot);
       this.roundWins[bot.id] = 0;
       this.stats[bot.id] = new PlayerStats();
       changed = true;
@@ -839,6 +843,8 @@ class Game {
   }
 
   removeBot() {
+    this.botBrain?.dispose();
+    this.botBrain = null;
     for (const id of Object.keys(this.players)) {
       if (!this.players[id].isBot) continue;
       this.emitAll('player.exit', id);
@@ -1130,6 +1136,7 @@ class Game {
 
   private runUpdate(elapsed: number) {
     const now = Date.now();
+    this.botBrain?.tick();
 
     // Spawn power-ups
     this.spawnPowerUp();
@@ -1508,6 +1515,8 @@ class Game {
 
   /** Clears every timer the game owns. Safe to call more than once. */
   stop() {
+    this.botBrain?.dispose();
+    this.botBrain = null;
     for (const handle of this.intervals) clearInterval(handle);
     this.intervals = [];
     this.clearCountdown();
