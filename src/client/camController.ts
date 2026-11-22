@@ -10,6 +10,9 @@ let lastShot = 0;
 const THIRD_PERSON_HEIGHT = 200;
 const THIRD_PERSON_BACK = 400;
 
+// Ignore mouse events this long after a touch (browser-synthesised)
+const SYNTH_MOUSE_MS = 500;
+
 export default class CamController {
   direction: number;
   weapon: number;
@@ -111,21 +114,34 @@ export default class CamController {
       endMovement(keyEvent.keyCode);
     };
 
-    const mouseDownEvent = () => {
+    // Clicks/taps on HUD elements, buttons and modals must not fire or move.
+    const isUiTarget = (target: EventTarget | null): boolean => {
+      const el = target as Element | null;
+      return !!(el && typeof el.closest === 'function' && el.closest('button, a, input, select, textarea, .modal, [data-ui]'));
+    };
+
+    // After a touch the browser synthesises mouse events; ignore them.
+    let lastTouchTime = -Infinity;
+    const isSynthesizedMouse = () => Date.now() - lastTouchTime < SYNTH_MOUSE_MS;
+
+    const mouseDownEvent = (e: MouseEvent) => {
+      if (isSynthesizedMouse() || isUiTarget(e.target)) return;
       if (!spectatorMode) {
         self.startCharge();
       }
     };
 
-    const mouseUpEvent = () => {
+    const mouseUpEvent = (e: MouseEvent) => {
+      if (isSynthesizedMouse()) return;
+      // Only release a charge that began on the game (mousedown ignores UI targets).
       if (self.charging) {
         self.releaseCharge();
-      } else {
-        self.fire(0);
       }
     };
 
     const touchStart = (e: TouchEvent) => {
+      lastTouchTime = Date.now();
+      if (isUiTarget(e.target)) return;
       e.preventDefault();
 
       if (e.touches.length > 0) {
@@ -140,6 +156,7 @@ export default class CamController {
     };
 
     const touchEnd = (e: TouchEvent) => {
+      lastTouchTime = Date.now();
       if (self.charging) {
         self.releaseCharge();
       }
@@ -153,8 +170,8 @@ export default class CamController {
     window.addEventListener('keyup', keyUpEvent);
     window.addEventListener('mousedown', mouseDownEvent);
     window.addEventListener('mouseup', mouseUpEvent);
-    window.addEventListener('touchstart', touchStart);
-    window.addEventListener('touchend', touchEnd);
+    window.addEventListener('touchstart', touchStart, { passive: false });
+    window.addEventListener('touchend', touchEnd, { passive: false });
   }
 
   isSpectatorMode(): boolean {
