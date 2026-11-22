@@ -408,11 +408,6 @@ export default class HUD {
           background: #4caf50; color: #fff; border: none; border-radius: 5px;
           cursor: pointer; pointer-events: auto;
         ">REMATCH</button>
-        <button id="replay-btn" style="
-          padding: 12px 30px; font-size: 16px;
-          background: #2196f3; color: #fff; border: none; border-radius: 5px;
-          cursor: pointer; pointer-events: auto;
-        ">WATCH REPLAY</button>
       </div>
       <div id="rematch-status" style="font-size: 14px; color: #888; margin-top: 10px;"></div>
     `;
@@ -529,25 +524,6 @@ export default class HUD {
 
   updateCameraMode(thirdPerson: boolean): void {
     this.cameraModeIndicator.textContent = thirdPerson ? '3RD PERSON [V]' : '1ST PERSON [V]';
-  }
-
-  showReplayControls(replay: any[], onPlay: () => void): void {
-    // Show a simple replay indicator
-    const overlay = document.createElement('div');
-    overlay.id = 'replay-overlay';
-    overlay.style.cssText = `
-      position: fixed; top: 10px; right: 10px;
-      background: rgba(33,150,243,0.8); color: #fff;
-      padding: 8px 16px; border-radius: 5px;
-      font-size: 14px; font-weight: bold; z-index: 9999;
-    `;
-    overlay.textContent = `REPLAY - ${replay.length} events`;
-    document.body.appendChild(overlay);
-  }
-
-  hideReplayControls(): void {
-    const overlay = document.getElementById('replay-overlay');
-    if (overlay) overlay.remove();
   }
 
   // Mobile weapon buttons

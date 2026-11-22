@@ -41,7 +41,6 @@ const socket = io();
 let hazardMeshes: any[] = [];
 let powerUpMeshes: Record<string, any> = {};
 let wallMeshes: Record<string, any> = {};
-let currentReplay: any[] | null = null;
 
 function updateGameState(elapsed: number): void {
   for (const key in gameState.players) {
@@ -405,35 +404,6 @@ function clearArenaFeatures(): void {
   removeHazardMeshes();
 }
 
-// === REPLAY SYSTEM ===
-
-function playReplay(replay: any[]): void {
-  if (!replay || replay.length === 0) return;
-  if (hud) hud.showReplayControls(replay, () => {});
-
-  let index = 0;
-  const startTime = Date.now();
-  const baseTime = replay[0].time;
-
-  const tick = () => {
-    const elapsed = Date.now() - startTime;
-    while (index < replay.length && replay[index].time - baseTime <= elapsed) {
-      const event = replay[index];
-      if (killFeed) {
-        killFeed.add(`[REPLAY] ${event.type}`, '#2196f3');
-      }
-      index++;
-    }
-    if (index < replay.length) {
-      requestAnimationFrame(tick);
-    } else {
-      if (hud) hud.hideReplayControls();
-      if (killFeed) killFeed.add('Replay complete', '#2196f3');
-    }
-  };
-  tick();
-}
-
 function setupEvents(): void {
   // Event for receiving information about zombies.
   socket.on('zombie', (zombie: any, playerId: string) => {
@@ -716,10 +686,7 @@ function setupEvents(): void {
     if (audio) audio.play('game_over');
     if (killFeed) killFeed.add(iWon ? 'VICTORY!' : 'DEFEAT', iWon ? '#4caf50' : '#f44336');
 
-    // Store replay for playback
-    currentReplay = data.replay || null;
-
-    // Rematch + Replay button handlers
+    // Rematch button handler
     setTimeout(() => {
       const rematchBtn = document.getElementById('rematch-btn');
       if (rematchBtn) {
@@ -727,13 +694,6 @@ function setupEvents(): void {
           socket.emit('rematch');
           const status = document.getElementById('rematch-status');
           if (status) status.textContent = 'Waiting for opponent...';
-        });
-      }
-
-      const replayBtn = document.getElementById('replay-btn');
-      if (replayBtn && currentReplay) {
-        replayBtn.addEventListener('click', () => {
-          if (currentReplay) playReplay(currentReplay);
         });
       }
     }, 100);
