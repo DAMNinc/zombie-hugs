@@ -302,6 +302,8 @@ export default class CamController {
     } else if (this.right) {
       curPosX += tr * elapsed * this.direction;
     }
+    const limit = Constants.ARENA_HALF_WIDTH - Constants.ARENA_MARGIN;
+    curPosX = Math.min(limit, Math.max(-limit, curPosX));
     camera.position.x = curPosX;
 
     // 3rd person camera positioning

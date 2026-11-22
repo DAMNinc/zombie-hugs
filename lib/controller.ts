@@ -8,6 +8,7 @@ import {
 } from 'unique-names-generator';
 import type { Socket } from 'socket.io';
 import logger from './logger';
+import { MAX_CHARGE_MS, clampArenaX, effectiveCharge, isFiniteNumber, validFireX, validWeaponCode } from './validate';
 
 interface Position {
   x: number;
@@ -54,7 +55,6 @@ const SPECTATOR_VOTE_COOLDOWN_MS = 15000;
 const SYNERGY_WINDOW_MS = 2000;
 
 // Charged shot constants
-const MAX_CHARGE_MS = 3000;
 
 // ELO constants
 const ELO_K = 32;
@@ -409,14 +409,25 @@ class Game {
       }
     }
 
-    onPlayer('fire', (position: Position, weaponCode: number, chargeTime?: number) => {
+    onPlayer('fire', (clientPosition: Position, clientWeaponCode: number, clientChargeTime?: number) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
+
+      const weaponCode = validWeaponCode(clientWeaponCode);
+      const spawnX = validFireX(clientPosition, player.position.x);
+      if (weaponCode === null || spawnX === null || (clientChargeTime !== undefined && !isFiniteNumber(clientChargeTime))) {
+        logger.debug('Dropped invalid fire from %s', player.id);
+        return;
+      }
+      // Server-authoritative spawn: z and y come from the server's player, x is the clamped client x.
+      const position: Position = { x: spawnX, y: player.position.y, z: player.position.z };
 
       // Fire rate check (server-authoritative)
       const now = Date.now();
       let delay = fireDelayFromCode(weaponCode);
       if (player.hasPowerUp('rapid_fire')) delay *= 0.5;
       if (now - player.lastFireTime < delay) return;
+      // A player cannot have charged longer than since their last shot.
+      const charge = effectiveCharge(clientChargeTime, now - player.lastFireTime) ?? 0;
       player.lastFireTime = now;
 
       logger.verbose('A zombie was added in game %s', this.id, position);
@@ -428,7 +439,6 @@ class Game {
       let speed = upgradeLevel >= 1 ? baseSpeed + 50 : baseSpeed;
 
       // Charged shot bonus
-      const charge = Math.min(chargeTime || 0, MAX_CHARGE_MS);
       const chargeRatio = charge / MAX_CHARGE_MS;
       if (chargeRatio > 0.3) {
         speed += Math.round(chargeRatio * 100);
@@ -483,16 +493,23 @@ class Game {
     });
 
     onPlayer('move.start', (keyCode: number) => {
+      if (!isFiniteNumber(keyCode)) return;
       player.toggleMovement(keyCode, true);
       this.emitAll('move.start', keyCode, player.id);
     });
 
     onPlayer('move.end', (keyCode: number) => {
+      if (!isFiniteNumber(keyCode)) return;
       player.toggleMovement(keyCode, false);
       this.emitAll('move.end', keyCode, player.id);
     });
 
-    onPlayer('weapon.set', (code: number) => {
+    onPlayer('weapon.set', (clientCode: number) => {
+      const code = validWeaponCode(clientCode);
+      if (code === null) {
+        logger.debug('Dropped invalid weapon.set from %s', player.id);
+        return;
+      }
       logger.debug('Player ' + player.id + ' switch to ' + code);
       player.setWeaponCode(code);
       this.emitAll('weapon.set', code, player.id);
@@ -512,8 +529,13 @@ class Game {
     });
 
     // Wall placement
-    onPlayer('place.wall', (x: number) => {
+    onPlayer('place.wall', (clientX: number) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
+      if (!isFiniteNumber(clientX)) {
+        logger.debug('Dropped invalid place.wall from %s', player.id);
+        return;
+      }
+      const x = clampArenaX(clientX);
       if (player.score < WALL_COST) return;
 
       player.score -= WALL_COST;
@@ -1223,7 +1245,7 @@ class Player {
       curPosX += tr * elapsed * this.direction;
     }
 
-    this.position.x = curPosX;
+    this.position.x = clampArenaX(curPosX);
   }
 
   toggleMovement(keyCode: number, directionBool: boolean) {
