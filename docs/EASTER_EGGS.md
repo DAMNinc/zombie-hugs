@@ -11,10 +11,10 @@ In-game eggs (a, d) are desktop-keyboard only, for players and spectators. They 
 - Code: `src/client/easterEggs.ts` (`konamiEgg`, `runDisco`; creatures come from `EggContext.getCreatures`, passed as `new EasterEggs(audio, () => gameState.zombies)` in `src/client/zombie.ts`), `'fanfare'` in `src/client/audio.ts`.
 
 ## (b) Title x5
-- Trigger: click/tap the "Zombie Hugs" `h1` on the landing page 5 times quickly.
-- Effect: hug-emoji rain animation.
-- Safety: overlay is `pointer-events: none`, removed after the animation; cooldown >= 10 s. Works on touch.
-- Code: `views/index.handlebars` inline script (planned; not part of the vite bundle).
+- Trigger: click/tap the "Zombie Hugs" `h1` on the landing page 5 times within 3 s.
+- Effect: 36 falling 🤗 / 🧟 emojis for about 5 s.
+- Safety: overlay is `pointer-events: none`, removed after the animation; 12 s cooldown (also starts under `prefers-reduced-motion`, where nothing is shown by design). Works on touch.
+- Code: `views/index.handlebars` inline script at the bottom of the file (not part of the vite bundle).
 
 ## (c) Rare special score (~1%)
 - Trigger: a scored point (`zombie.out-of-bounds`), `Math.random() < 0.01`.
