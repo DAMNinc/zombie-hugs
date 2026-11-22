@@ -8,6 +8,7 @@
 
 import * as THREE from 'three';
 import { LegacyModelData } from './LegacyJSONLoader';
+import { creatureYaw, swayDirection } from './arena';
 
 window.ROME = {};
 
@@ -243,12 +244,18 @@ export default class Fox {
   weaponCode: number;
   spawnTime: number;
   baseX: number;
+  baseZ: number;
+  /** Unit heading in the world (duel: x 0, z = direction). */
+  hx: number;
+  hz: number;
+  /** Brawl (square arena): zig-zag offset follows the server's (-vz, vx). */
+  squareArena = false;
 
   // Interpolation targets
   private targetX: number | null = null;
   private targetZ: number | null = null;
 
-  constructor(direction: number, zombieModel: any, name?: string, weaponCode?: number, health?: number, speed?: number) {
+  constructor(direction: number, zombieModel: any, name?: string, weaponCode?: number, health?: number, speed?: number, heading?: { x: number; z: number }) {
     this.offset = zombieModel.offset;
     // Server is authoritative for health; model table is only a fallback.
     this.health = health ?? zombieModel.health;
@@ -257,6 +264,9 @@ export default class Fox {
     this.weaponCode = weaponCode || 1;
     this.spawnTime = Date.now();
     this.baseX = 0;
+    this.baseZ = 0;
+    this.hx = heading ? heading.x : 0;
+    this.hz = heading ? heading.z : this.direction;
 
     // Fallback mirrors the server's speedFromCode (horde = 200); the server-sent speed wins.
     this.speed = speed ?? ((weaponCode === 5) ? 200 : 300);
@@ -269,36 +279,62 @@ export default class Fox {
     this.speed = speed;
   }
 
+  /** Change the heading (server vx/vz); the model keeps facing it. */
+  setHeading(x: number, z: number): void {
+    this.hx = x;
+    this.hz = z;
+    this.foxObj.mesh.rotation.y = creatureYaw({ x, z });
+  }
+
   update(elapsed: number): void {
     // Smooth interpolation toward server target
     const lerpFactor = Math.min(1, elapsed * 10); // ~10x per second convergence
+    const mesh = this.foxObj.mesh;
+    const step = elapsed * this.speed;
 
-    if (this.targetZ !== null) {
-      const currentZ = this.foxObj.mesh.position.z;
-      const diff = (this.targetZ + this.offset.z) - currentZ;
-      // If close enough, let client-side prediction take over
-      if (Math.abs(diff) < 5) {
-        this.targetZ = null;
-      } else {
-        this.foxObj.mesh.position.z += diff * lerpFactor;
-      }
-    }
-
-    // Client-side prediction: keep moving forward
-    this.foxObj.mesh.position.z += elapsed * this.speed * this.direction;
-
-    // Fox zigzag
     if (this.weaponCode === 1 && this.speed > 0) {
-      const timeSinceSpawn = (Date.now() - this.spawnTime) / 1000;
-      this.foxObj.mesh.position.x = this.baseX + this.offset.x + Math.sin(timeSinceSpawn * 4) * 50;
-    } else if (this.targetX !== null) {
-      const currentX = this.foxObj.mesh.position.x;
-      const diffX = (this.targetX + this.offset.x) - currentX;
-      if (Math.abs(diffX) < 5) {
-        this.targetX = null;
-      } else {
-        this.foxObj.mesh.position.x += diffX * lerpFactor;
+      // Fox: a straight track (base) plus a zig-zag perpendicular to the heading.
+      if (this.targetX !== null || this.targetZ !== null) {
+        const tx = this.targetX ?? this.baseX;
+        const tz = this.targetZ ?? this.baseZ;
+        // Correct only the error along the heading (the wiggle is client side).
+        const e = (tx - this.baseX) * this.hx + (tz - this.baseZ) * this.hz;
+        if (Math.abs(e) < 5) {
+          this.targetX = null;
+          this.targetZ = null;
+        } else {
+          this.baseX += this.hx * e * lerpFactor;
+          this.baseZ += this.hz * e * lerpFactor;
+        }
       }
+      // Client-side prediction: keep moving forward
+      this.baseX += step * this.hx;
+      this.baseZ += step * this.hz;
+      const sway = Math.sin(((Date.now() - this.spawnTime) / 1000) * 4) * 50;
+      const perp = swayDirection({ x: this.hx, z: this.hz }, this.squareArena);
+      mesh.position.x = this.baseX + this.offset.x + perp.x * sway;
+      mesh.position.z = this.baseZ + this.offset.z + perp.z * sway;
+    } else {
+      if (this.targetZ !== null) {
+        const diff = (this.targetZ + this.offset.z) - mesh.position.z;
+        // If close enough, let client-side prediction take over
+        if (Math.abs(diff) < 5) {
+          this.targetZ = null;
+        } else {
+          mesh.position.z += diff * lerpFactor;
+        }
+      }
+      if (this.targetX !== null) {
+        const diffX = (this.targetX + this.offset.x) - mesh.position.x;
+        if (Math.abs(diffX) < 5) {
+          this.targetX = null;
+        } else {
+          mesh.position.x += diffX * lerpFactor;
+        }
+      }
+      // Client-side prediction: keep moving forward
+      mesh.position.x += step * this.hx;
+      mesh.position.z += step * this.hz;
     }
 
     this.foxObj.update(elapsed * 1000);

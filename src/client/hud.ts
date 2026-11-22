@@ -676,13 +676,15 @@ export default class HUD {
       <b>Controls</b><br>
       <b>Hold</b> left / right side of the screen to move<br>
       <b>Tap / hold</b> the middle to fire or charge<br>
-      Buttons below: creature, <b>Shield</b>, <b>Wall</b>, <b>Cam</b>
+      Buttons below: creature, <b>Shield</b>, <b>Wall</b>, <b>Cam</b><br>
+      Brawl: tap a player chip to aim at them
     `
       : `
       <b>Controls</b><br>
       <b>A / D</b> move &nbsp; <b>click / hold</b> fire or charge<br>
       <b>1-5</b> pick creature &nbsp; <b>Q</b> shield<br>
-      <b>E</b> place wall &nbsp; <b>V</b> camera view
+      <b>E</b> place wall &nbsp; <b>V</b> camera view<br>
+      Brawl: <b>T</b> / <b>Tab</b> next target
     `;
     const btn = document.createElement('button');
     btn.type = 'button';

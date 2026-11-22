@@ -219,6 +219,7 @@ body.touch-hud .hud-charge {
   transform: none !important;
   width: 120px !important;
 }
+body.touch-hud.brawl-targets .controls-hint { bottom: 235px; }
 body.touch-hud .controls-hint { bottom: 150px; max-width: 260px; font-size: 11px; line-height: 1.5; padding: 8px 12px; }
 /* Phone score panel: smaller text, round on one line, HP bars below the panel */
 body.touch-hud #opponent-hud { gap: 10px; padding: 4px 10px; font-size: 12px; top: 6px; }
