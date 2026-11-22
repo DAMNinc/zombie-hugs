@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Defend the Hug Station · Zombie Hugs</title>
+  <link rel="stylesheet" href="/css/solo.css">
+</head>
+<body>
+  <header class="status">
+    <a href="/">← Home</a>
+    <h1>Defend the Hug Station</h1>
+    <dl>
+      <div><dt>Station</dt><dd id="health"></dd></div>
+      <div><dt>Scrap</dt><dd id="scrap"></dd></div>
+      <div><dt>Waves cleared</dt><dd id="cleared"></dd></div>
+    </dl>
+  </header>
+  <main id="arena" aria-label="Two-lane defence arena">
+    <p id="wave" role="status"></p>
+    <p id="chain" role="status"></p>
+    <section id="outcome" hidden>
+      <h2 id="result" tabindex="-1"></h2>
+      <button id="retry">Retry</button>
+    </section>
+  </main>
+  <footer>
+    <div class="controls">
+      <button id="camera" aria-keyshortcuts="V" disabled>Combat view</button>
+      <button id="start" disabled>Start wave</button>
+      <progress id="charge" max="1" value="0" aria-label="Shot charge" hidden></progress>
+    </div>
+    <section id="build-tools" aria-label="Build defences">
+      <div id="shop" class="controls"></div>
+      <div class="controls">
+        <p id="placement" role="status"></p>
+        <button id="confirm" disabled>Confirm</button>
+      </div>
+    </section>
+    <p id="help"></p>
+  </footer>
+  <script type="module" src="/js/solo.js"></script>
+</body>
+</html>

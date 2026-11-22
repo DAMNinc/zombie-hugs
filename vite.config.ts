@@ -12,10 +12,11 @@ export default defineConfig({
     rollupOptions: {
       input: {
         zombie: path.resolve(__dirname, 'src/client/zombie.ts'),
+        solo: path.resolve(__dirname, 'src/client/solo.ts'),
       },
       output: {
         entryFileNames: '[name].js',
-        format: 'iife',
+        format: 'es',
       },
     },
   },
