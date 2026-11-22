@@ -1293,6 +1293,8 @@ function setupSocket(socket: Socket) {
   });
 }
 
+export { Game, Player, Zombie, PlayerStats, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard };
+
 export default {
   setupSocket,
   games,
