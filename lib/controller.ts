@@ -8,6 +8,8 @@ import {
 } from 'unique-names-generator';
 import type { Socket } from 'socket.io';
 import logger from './logger';
+import { BRAWL_SPAWN_RANGE, CLOCKWISE_SEATS, EDGES, SQUARE_HALF, WALL_OFFSET, clampEdgeTravel, edgePoint, exitedEdge, headingTo, lateralOf, validFireLateral } from './arena';
+import type { Axis, Edge } from './arena';
 import { BotBrain } from './bot';
 import { ARENA_HALF_WIDTH, ARENA_MARGIN, MAX_CHARGE_MS, clampArenaX, effectiveCharge, isFiniteNumber, validFireX, validToken, validWeaponCode } from './validate';
 
@@ -19,7 +21,6 @@ interface Position {
 
 type GamePhase = 'lobby' | 'countdown' | 'playing' | 'round_over' | 'match_over' | 'sudden_death';
 type GameMode = 'solo' | 'duel' | 'brawl';
-type Edge = 'N' | 'S' | 'W' | 'E';
 
 const MAX_SEATS = 4;
 /** How long a dropped player keeps their seat outside the lobby. */
@@ -27,10 +28,10 @@ const RECONNECT_WINDOW_MS = 15000;
 
 /** Seat table (Okabe-Ito colours). Seats 0/1 are the classic duel sides; 2/3 are the brawl W/E edges. */
 const SEATS: Array<{ color: string; edge: Edge; direction: number; x: number; z: number }> = [
-  { color: '#0072B2', edge: 'N', direction: -1, x: 0, z: -1000 },
-  { color: '#D55E00', edge: 'S', direction: 1, x: 0, z: 1000 },
-  { color: '#F0E442', edge: 'W', direction: 1, x: -1000, z: 0 },
-  { color: '#009E73', edge: 'E', direction: -1, x: 1000, z: 0 },
+  { color: '#0072B2', edge: 'N', direction: -1, x: 0, z: -SQUARE_HALF },
+  { color: '#D55E00', edge: 'S', direction: 1, x: 0, z: SQUARE_HALF },
+  { color: '#F0E442', edge: 'W', direction: 1, x: -SQUARE_HALF, z: 0 },
+  { color: '#009E73', edge: 'E', direction: -1, x: SQUARE_HALF, z: 0 },
 ];
 
 const playerNameConfig = { dictionaries: [adjectives, names], length: 2 };
@@ -98,6 +99,8 @@ interface Wall {
   width: number;
   ownerId: string;
   expiresAt: number;
+  /** Axis the wall extends along (duel walls: 'x'). */
+  axis: Axis;
 }
 
 interface ActivePowerUp {
@@ -259,7 +262,11 @@ class Game {
       const width = 150 + Math.random() * 150;
       const depth = 200 + Math.random() * 200;
       let x: number;
-      if (type === 'damage') {
+      let z = (Math.random() - 0.5) * 1200;
+      if (this.mode === 'brawl') {
+        x = (Math.random() - 0.5) * 2 * (BRAWL_SPAWN_RANGE - width / 2);
+        z = (Math.random() - 0.5) * 2 * (BRAWL_SPAWN_RANGE - depth / 2);
+      } else if (type === 'damage') {
         // Keep the centre lane (x = 0) clear: nearest edge at least HAZARD_CLEAR_LANE from it.
         const side = Math.random() < 0.5 ? -1 : 1;
         const minX = HAZARD_CLEAR_LANE + width / 2;
@@ -270,7 +277,7 @@ class Game {
       }
       this.hazards.push({
         id: crypto.randomBytes(4).toString('hex'),
-        position: { x, y: 0, z: (Math.random() - 0.5) * 1200 },
+        position: { x, y: 0, z },
         width,
         depth,
         type,
@@ -288,14 +295,17 @@ class Game {
 
     this.lastPowerUpSpawn = now;
     const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+    const brawl = this.mode === 'brawl';
     const powerUp: PowerUp = {
       id: crypto.randomBytes(4).toString('hex'),
       type,
-      position: {
-        x: clampArenaX((Math.random() - 0.5) * 980),
-        y: 0,
-        z: (Math.random() - 0.5) * 1400,
-      },
+      position: brawl
+        ? { x: (Math.random() - 0.5) * 2 * BRAWL_SPAWN_RANGE, y: 0, z: (Math.random() - 0.5) * 2 * BRAWL_SPAWN_RANGE }
+        : {
+            x: clampArenaX((Math.random() - 0.5) * 980),
+            y: 0,
+            z: (Math.random() - 0.5) * 1400,
+          },
       expiresAt: now + POWERUP_DURATION_MS,
     };
     this.powerUps[powerUp.id] = powerUp;
@@ -611,13 +621,22 @@ class Game {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
 
       const weaponCode = validWeaponCode(clientWeaponCode);
-      const spawnX = validFireX(clientPosition, player.position.x);
+      const brawl = this.mode === 'brawl' && !!player.edge;
+      const edge = player.edge;
+      const spawnX = brawl && edge ? validFireLateral(clientPosition, edge, lateralOf(edge, player.position)) : validFireX(clientPosition, player.position.x);
       if (weaponCode === null || spawnX === null || (clientChargeTime !== undefined && !isFiniteNumber(clientChargeTime))) {
         logger.debug('Dropped invalid fire from %s', player.id);
         return;
       }
       // Server-authoritative spawn: z and y come from the server's player, x is the clamped client x.
-      const position: Position = { x: spawnX, y: player.position.y, z: player.position.z };
+      // Brawl: the creature spawns on the player's edge line and heads for the firer's current target.
+      const position: Position = brawl && edge ? edgePoint(edge, spawnX) : { x: spawnX, y: player.position.y, z: player.position.z };
+      const target = brawl ? this.activeTarget(player) : null;
+      const heading = brawl && edge ? headingTo(position, target ? target.position : null, edge) : null;
+      // Offset a spawn point sideways along the firer's lateral axis (horde spread, synergy extras).
+      const offsetPos = (offset: number): Position => (brawl && edge
+        ? edgePoint(edge, clampEdgeTravel(spawnX + offset))
+        : { x: position.x + offset, y: position.y, z: position.z });
 
       // Fire rate check (server-authoritative)
       const now = Date.now();
@@ -666,6 +685,7 @@ class Game {
       const createZombie = (pos: Position, hp: number, spd: number) => {
         const zombieName = uniqueNamesGenerator(zombieNameConfig);
         const zombie = new Zombie(zombieName, pos, player.direction * -1, player.id, hp, weaponCode, spd, chargeRatio);
+        if (heading) zombie.setHeading(heading.vx, heading.vz, target ? target.id : null);
         this.zombies[zombie.id] = zombie;
         this.emitAll('zombie', zombie.toJSON(), player.id);
       };
@@ -674,7 +694,7 @@ class Game {
         const count = 5 + synergy.extraCreatures;
         for (let i = 0; i < count; i++) {
           const spreadX = (i - Math.floor(count / 2)) * 60;
-          const hordePos = { x: position.x + spreadX, y: position.y, z: position.z };
+          const hordePos = offsetPos(spreadX);
           createZombie(hordePos, health, speed);
         }
         this.stats[player.id].zombiesFired += count;
@@ -683,7 +703,7 @@ class Game {
         // Extra creatures from synergy
         for (let i = 0; i < synergy.extraCreatures; i++) {
           const offset = (i + 1) * 80;
-          createZombie({ x: position.x + offset, y: position.y, z: position.z }, health, speed);
+          createZombie(offsetPos(offset), health, speed);
         }
         this.stats[player.id].zombiesFired += 1 + synergy.extraCreatures;
       }
@@ -731,20 +751,40 @@ class Game {
         logger.debug('Dropped invalid place.wall from %s', player.id);
         return;
       }
-      const x = clampArenaX(clientX);
+      const brawl = this.mode === 'brawl' && !!player.edge;
+      const lateral = brawl ? clampEdgeTravel(clientX) : clampArenaX(clientX);
       if (player.score < WALL_COST) return;
 
       player.score -= WALL_COST;
       const now = Date.now();
       const wall: Wall = {
         id: crypto.randomBytes(4).toString('hex'),
-        position: { x, y: 0, z: player.position.z + player.direction * -200 },
+        position: { x: lateral, y: 0, z: player.position.z + player.direction * -200 },
         width: WALL_WIDTH,
         ownerId: player.id,
         expiresAt: now + WALL_DURATION_MS,
+        axis: 'x',
       };
+      if (brawl && player.edge) {
+        // In front of the player along the inward normal, extending along the lateral axis.
+        const def = EDGES[player.edge];
+        const base = edgePoint(player.edge, lateral);
+        wall.position = { x: base.x + def.nx * WALL_OFFSET, y: 0, z: base.z + def.nz * WALL_OFFSET };
+        wall.axis = def.axis;
+      }
       this.walls[wall.id] = wall;
       this.emitAll('wall.place', wall);
+    });
+
+    onPlayer('target.set', (targetId: unknown) => {
+      if (this.mode !== 'brawl' || this.phase === 'lobby') return;
+      if (typeof targetId !== 'string' || targetId === player.id) return;
+      if (!Object.prototype.hasOwnProperty.call(this.players, targetId)) return;
+      const target = this.players[targetId];
+      if (target.isBot || !target.alive) return;
+      if (player.targetId === targetId) return;
+      player.targetId = targetId;
+      this.emitAll('target', player.id, targetId);
     });
 
     onPlayer('ready', () => {
@@ -807,8 +847,9 @@ class Game {
   prepareMatch() {
     this.mode = this.previewMode();
     let changed = false;
-    if (this.mode !== 'brawl') {
-      // Lane modes always use seats 0 and 1 (north/south), whatever seats the humans held in the lobby.
+    {
+      // Lane modes use seats 0 and 1 (north/south), brawl seats 0..n-1 (N, S, W, E), whatever seats the
+      // humans held in the lobby.
       const humans = this.humans().sort((x, y) => x.seat - y.seat);
       humans.forEach((p, i) => {
         if (p.seat !== i) {
@@ -826,6 +867,47 @@ class Game {
       changed = true;
     }
     if (changed) this.announceRoster();
+    if (this.mode === 'brawl') {
+      for (const p of Object.values(this.players)) p.targetId = null;
+    }
+    this.refreshTargets();
+  }
+
+  /** The seated, alive opponent the player is aiming at, or null. */
+  activeTarget(player: Player): Player | null {
+    const t = player.targetId ? this.players[player.targetId] : undefined;
+    return t && t !== player && t.alive ? t : null;
+  }
+
+  /** Next seated, alive opponent clockwise (N→E→S→W) after `fromSeat`, or null when nobody is left. */
+  nextClockwise(player: Player, fromSeat: number): Player | null {
+    const start = CLOCKWISE_SEATS.indexOf(fromSeat);
+    for (let i = 1; i <= CLOCKWISE_SEATS.length; i++) {
+      const seat = CLOCKWISE_SEATS[(start + i) % CLOCKWISE_SEATS.length];
+      const cand = Object.values(this.players).find(p => p.seat === seat);
+      if (cand && cand !== player && cand.alive && !cand.isBot) return cand;
+    }
+    return null;
+  }
+
+  /**
+   * Brawl: gives every player a valid target. A target that left or is knocked out (`alive === false`) is
+   * replaced by the next opponent clockwise after it; `leftSeat` is the seat of a target that was just removed.
+   * Broadcasts `target` for every change. Call it whenever the roster or anybody's `alive` changes.
+   */
+  refreshTargets(leftSeat?: { id: string; seat: number }) {
+    if (this.mode !== 'brawl') return;
+    for (const p of Object.values(this.players)) {
+      if (this.activeTarget(p)) continue;
+      const old = p.targetId ? this.players[p.targetId] : undefined;
+      const from = old ? old.seat : leftSeat && leftSeat.id === p.targetId ? leftSeat.seat : p.seat;
+      const next = this.nextClockwise(p, from);
+      const nextId = next ? next.id : null;
+      if (nextId !== p.targetId) {
+        p.targetId = nextId;
+        this.emitAll('target', p.id, nextId);
+      }
+    }
   }
 
   /** Tells everyone about the current seats (sent when seats change at match start). */
@@ -1008,12 +1090,14 @@ class Game {
   exitPlayer(player: Player) {
     if (this.players[player.id] !== player) return;
     logger.info(`Player ${player.name} (${player.id}) exited`);
+    const leftSeat = { id: player.id, seat: player.seat };
     player.clearDisconnectTimer();
     this.emitAll('player.exit', player.id);
     delete this.players[player.id];
     delete this.roundWins[player.id];
     delete this.stats[player.id];
     this.lastActivity = Date.now();
+    if (this.phase !== 'lobby') this.refreshTargets(leftSeat);
 
     const humansLeft = this.humans();
     if (this.phase === 'lobby') {
@@ -1095,6 +1179,7 @@ class Game {
             width: 200,
             ownerId: 'spectator',
             expiresAt: now + 4000,
+            axis: 'x',
           };
           this.walls[wall.id] = wall;
           this.emitAll('wall.place', wall);
@@ -1166,7 +1251,7 @@ class Game {
 
     for (const key in this.players) {
       const player = this.players[key];
-      player.update(elapsed);
+      player.update(elapsed, this.mode === 'brawl');
     }
 
     for (const key of Object.keys(this.zombies)) {
@@ -1193,10 +1278,12 @@ class Game {
               }
               break;
             case 'slow':
-              zombie.position.z -= elapsed * zombie.speed * zombie.direction * 0.5; // counteract half movement
+              if (zombie.brawl) zombie.nudge(-elapsed * zombie.speed * zombie.vx * 0.5, -elapsed * zombie.speed * zombie.vz * 0.5);
+              else zombie.position.z -= elapsed * zombie.speed * zombie.direction * 0.5; // counteract half movement
               break;
             case 'wind':
-              zombie.position.x += elapsed * 150 * (hazard.windDirection || 1);
+              if (zombie.brawl) zombie.nudge(elapsed * 150 * (hazard.windDirection || 1), 0);
+              else zombie.position.x += elapsed * 150 * (hazard.windDirection || 1);
               break;
           }
         }
@@ -1211,7 +1298,8 @@ class Game {
         if (wall.ownerId === zombie.firedByPlayer) continue; // own walls don't block own creatures
         const wz = Math.abs(zombie.position.z - wall.position.z);
         const wx = Math.abs(zombie.position.x - wall.position.x);
-        if (wz < 50 && wx < wall.width / 2) {
+        const hit = wall.axis === 'z' ? wx < 50 && wz < wall.width / 2 : wz < 50 && wx < wall.width / 2;
+        if (hit) {
           this.emitAll('zombie.walled', zombie.id, wId);
           delete this.zombies[key];
           wallBlocked = true;
@@ -1230,7 +1318,10 @@ class Game {
         const shieldZ = player.position.z;
         const zDist = Math.abs(zombie.position.z - shieldZ);
         const xDist = Math.abs(zombie.position.x - player.position.x);
-        if (zDist < 150 && xDist < 300) {
+        // Brawl: 150 from the player's edge line, 300 along it (swapped on the W/E edges).
+        const sideEdge = this.mode === 'brawl' && !!player.edge && EDGES[player.edge].axis === 'z';
+        const blocked = sideEdge ? xDist < 150 && zDist < 300 : zDist < 150 && xDist < 300;
+        if (blocked) {
           this.emitAll('zombie.shielded', zombie.id, pid);
           delete this.zombies[key];
           shieldDestroyed = true;
@@ -1242,7 +1333,8 @@ class Game {
       if (this.isOutOfBounds(zombie)) {
         const firingPlayer = this.players[zombie.firedByPlayer];
 
-        const opponentId = this.pickDamageTarget(zombie);
+        const brawl = this.mode === 'brawl';
+        const opponentId = brawl ? this.pickBrawlVictim(zombie) : this.pickDamageTarget(zombie);
 
         // A player in their reconnect window cannot be hurt: the creature just disappears, nobody scores.
         if (opponentId && !this.players[opponentId].connected) {
@@ -1251,7 +1343,8 @@ class Game {
           continue;
         }
 
-        if (firingPlayer) {
+        // Brawl: only a creature that hits an opponent's edge scores (empty and own edges are plain misses).
+        if (firingPlayer && (!brawl || opponentId)) {
           const timeSinceLast = now - firingPlayer.lastScoreTime;
           let points = 1;
 
@@ -1333,21 +1426,21 @@ class Game {
     }
   }
 
-  /**
-   * Who a creature that left the arena hurts. Duel/solo: the other player. With more players: the next
-   * living seat after the firer in clockwise order (N, E, S, W). Brawl targeting proper belongs to the
-   * brawl rules; this is the fallback that keeps any roster size working.
-   */
+  /** Duel/solo: the other player (the lane carries a creature to the opposite end). */
   pickDamageTarget(zombie: Zombie): string | null {
     const owner = this.players[zombie.firedByPlayer];
     if (!owner) return null;
-    const others = Object.values(this.players).filter(p => p.id !== owner.id && p.hp > 0);
-    if (others.length === 0) return null;
-    const CLOCKWISE = [0, 3, 1, 2];
-    const rank = (seat: number) => CLOCKWISE.indexOf(seat);
-    const start = rank(owner.seat);
-    others.sort((x, y) => ((rank(x.seat) - start + 4) % 4) - ((rank(y.seat) - start + 4) % 4));
-    return others[0].id;
+    const other = Object.values(this.players).find(p => p.id !== owner.id && p.hp > 0);
+    return other ? other.id : null;
+  }
+
+  /** Brawl: the owner of the edge the creature left through, if that is a seated, alive player other than its firer. */
+  pickBrawlVictim(zombie: Zombie): string | null {
+    const edge = exitedEdge(zombie.position);
+    if (!edge) return null;
+    const owner = Object.values(this.players).find(p => p.edge === edge);
+    if (!owner || owner.id === zombie.firedByPlayer || !owner.alive || owner.isBot) return null;
+    return owner.id;
   }
 
   standings() {
@@ -1552,6 +1645,7 @@ class Game {
   }
 
   isOutOfBounds(zombie: Zombie): boolean {
+    if (this.mode === 'brawl') return exitedEdge(zombie.position) !== null;
     return zombie.position.z < -1500 || zombie.position.z > 1500;
   }
 }
@@ -1594,6 +1688,10 @@ class Player {
   disconnectTimer: ReturnType<typeof setTimeout> | null;
   /** Starting x of the seat; resetForRound puts the player back here. */
   homeX: number;
+  /** Brawl: who this player aims at (null in lane modes or when nobody is left). */
+  targetId: string | null;
+  /** False while knocked out (brawl KO/respawn); a not-alive player is skipped as target and as hit victim. */
+  alive: boolean;
 
   constructor(
     socket: Socket,
@@ -1632,6 +1730,8 @@ class Player {
     this.connected = true;
     this.disconnectTimer = null;
     this.homeX = x;
+    this.targetId = null;
+    this.alive = true;
   }
 
   clearDisconnectTimer() {
@@ -1678,6 +1778,8 @@ class Player {
       edge: this.edge,
       isBot: this.isBot,
       connected: this.connected,
+      targetId: this.targetId,
+      alive: this.alive,
     };
   }
 
@@ -1706,9 +1808,19 @@ class Player {
     this.recentFires = [];
     this.lastFireTime = 0;
     this.position.x = this.homeX;
+    if (this.edge && EDGES[this.edge].axis === 'z') this.position.z = 0;
   }
 
-  update(elapsed: number) {
+  update(elapsed: number, brawl = false) {
+    if (brawl && this.edge) {
+      const axis = EDGES[this.edge].axis;
+      let lat = this.position[axis];
+      // `direction` is the sign of "right" on screen for this edge.
+      if (this.left) lat -= 100 * elapsed * this.direction;
+      else if (this.right) lat += 100 * elapsed * this.direction;
+      this.position[axis] = clampEdgeTravel(lat);
+      return;
+    }
     let curPosX = this.position.x;
     const tr = 100.0;
 
@@ -1750,6 +1862,12 @@ class Zombie {
   baseX: number;
   hazardsHit: Set<string>;
   chargeRatio: number;
+  /** Unit heading. Lane modes: (0, direction). Brawl: toward the firer's target at fire time. */
+  vx: number;
+  vz: number;
+  baseZ: number;
+  brawl: boolean;
+  targetId: string | null;
 
   constructor(
     name: string,
@@ -1773,12 +1891,39 @@ class Zombie {
     this.baseX = position.x;
     this.hazardsHit = new Set();
     this.chargeRatio = chargeRatio;
+    this.vx = 0;
+    this.vz = direction;
+    this.baseZ = position.z;
+    this.brawl = false;
+    this.targetId = null;
+  }
+
+  /** Brawl: switches the creature to free (heading based) movement. */
+  setHeading(vx: number, vz: number, targetId: string | null) {
+    this.brawl = true;
+    this.vx = vx;
+    this.vz = vz;
+    this.targetId = targetId;
+    this.baseX = this.position.x;
+    this.baseZ = this.position.z;
+  }
+
+  /** Brawl: shifts the creature (and the fox zig-zag's centre line) by a world offset. */
+  nudge(dx: number, dz: number) {
+    this.position.x += dx;
+    this.position.z += dz;
+    this.baseX += dx;
+    this.baseZ += dz;
   }
 
   toJSON() {
     return {
       id: this.id,
       name: this.name,
+      ownerId: this.firedByPlayer,
+      targetId: this.targetId,
+      vx: this.vx,
+      vz: this.vz,
       position: this.position,
       direction: this.direction,
       health: this.health,
@@ -1789,7 +1934,10 @@ class Zombie {
   }
 
   isCollision(zombie: Zombie): boolean {
-    if (this.direction === zombie.direction) return false;
+    // Brawl: creatures of different owners collide; lane modes: opposite directions.
+    if (this.brawl || zombie.brawl) {
+      if (this.firedByPlayer === zombie.firedByPlayer) return false;
+    } else if (this.direction === zombie.direction) return false;
 
     if (this.weaponCode === 3 && zombie.weaponCode !== 3) return false;
     if (this.weaponCode !== 3 && zombie.weaponCode === 3) return false;
@@ -1801,6 +1949,21 @@ class Zombie {
   }
 
   update(elapsed: number) {
+    if (this.brawl) {
+      const step = elapsed * this.speed;
+      if (this.weaponCode === 1) {
+        // Fox: zig-zag perpendicular to the heading around a straight centre line.
+        this.baseX += this.vx * step;
+        this.baseZ += this.vz * step;
+        const offset = Math.sin(((Date.now() - this.spawnTime) / 1000) * 4) * 50;
+        this.position.x = this.baseX - this.vz * offset;
+        this.position.z = this.baseZ + this.vx * offset;
+      } else {
+        this.position.x += this.vx * step;
+        this.position.z += this.vz * step;
+      }
+      return;
+    }
     this.position.z += elapsed * this.speed * this.direction;
 
     if (this.weaponCode === 1) {

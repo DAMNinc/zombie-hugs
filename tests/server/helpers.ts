@@ -57,3 +57,16 @@ export function startPlaying(opts: { names?: [string, string]; hazards?: boolean
   ctx.game.lastPowerUpSpawn = Date.now();
   return ctx;
 }
+
+/** A brawl in the 'playing' phase with n humans on seats 0..n-1 (N, S, W, E). */
+export function startBrawl(n: 3 | 4 = 4) {
+  const game = new Game(1, 'brawl');
+  const ps = Array.from({ length: n }, (_, i) => makePlayer(`p${i}`));
+  for (const p of ps) game.joinPlayer(p.player);
+  for (const p of ps) p.socket.trigger('ready');
+  vi.advanceTimersByTime(3000);
+  game.hazards = [];
+  game.lastPowerUpSpawn = Date.now();
+  return { game, ps };
+}
+

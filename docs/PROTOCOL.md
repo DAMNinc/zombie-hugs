@@ -12,7 +12,7 @@ fields stay so the duel client keeps working.
   seat 0 `#0072B2` blue, seat 1 `#D55E00` vermillion, seat 2 `#F0E442` yellow, seat 3 `#009E73` green.
 - Duel/solo geometry is unchanged: seat 0 → direction -1 at z=-1000, seat 1 → direction 1 at z=+1000.
 - Brawl geometry: square arena; seat 0 edge `N` (z=-1000), seat 1 `S` (z=+1000), seat 2 `W` (x=-1000), seat 3 `E` (x=+1000).
-  (Details owned by task t2; `edge` is in the player payload.)
+  Full rules in "Brawl geometry" below; `edge` is in the player payload.
 
 ## Joining
 - client → `join.player` `{ gameId, token? }`
@@ -71,14 +71,40 @@ fields stay so the duel client keeps working.
   `standings` (see below). Zombies add `ownerId` (= firer), `targetId` (brawl), `vx`, `vz` (unit heading; duel:
   vx 0, vz = direction).
 - client → `target.set` `(playerId)`: brawl only; must be another alive seated player, else ignored.
-  server → `target` `(playerId, targetId)` broadcast. Default target: next seated player clockwise
-  (seat order 0→3→1→2→0, i.e. N→E→S→W) — owned by t2, may be refined.
-- `fire` unchanged; in brawl the creature heads to the firer's current target's edge.
+  server → `target` `(playerId, targetId)` broadcast (also when the server retargets). Default target: next
+  seated, alive opponent clockwise (seat order 0→3→1→2→0, i.e. N→E→S→W); when the target exits or is knocked
+  out (`alive:false`) it moves on to the next one clockwise. `target.set` is ignored in lobby/duel/solo, for a
+  non-string id, an unknown id, yourself, or a player who is not alive.
+- `fire` keeps its signature; in brawl the creature heads at the firer's current target (see Brawl geometry).
 - server → `player.damage` `(playerId, hp, attackerId)` (attackerId added).
-- server → `zombie.out-of-bounds` `(zombieId, firedByPlayerId, hitPlayerId | null)` (third arg added). Until the
-  brawl targeting lands, a creature that leaves the lane hurts the next living seat clockwise (N→E→S→W) after
-  its firer.
-- Brawl only **[brawl rules]**:
+- server → `zombie.out-of-bounds` `(zombieId, firedByPlayerId, hitPlayerId | null)` (third arg added). Duel/solo:
+  the other player. Brawl: the owner of the edge the creature left through (see Brawl geometry).
+- `wall.place` payload gains `axis: 'x' | 'z'` (axis the wall extends along; duel/spectator walls `'x'`).
+- Brawl geometry (implemented in `lib/arena.ts`; applies only when `mode === 'brawl'`, duel/solo are unchanged):
+  - Square arena, `SQUARE_HALF` 1000: N z=-1000, S z=+1000, W x=-1000, E x=+1000; players face the centre
+    (inward normal N +z, S -z, W +x, E -x). `position` stays a world {x,y,z}, start at lateral 0.
+  - Lateral axis: N/S move along x, W/E along z, clamped to ±`EDGE_TRAVEL` 800. `move.start/end` keys are
+    relative to the player's own view: left (-1/37/65) = to their left on screen, right (1/39/68) = to their
+    right. World directions: N left=+x, S left=-x, W left=-z, E left=+z.
+  - `fire (position, weaponCode, chargeTime?)`: the server reads the lateral coordinate from `position`
+    (x for N/S, z for W/E), clamps it to the server's lateral ±150 and ±800, and spawns on the player's edge
+    line. Heading = unit vector spawn → current target's position at fire time (inward normal without a target).
+    Horde/synergy extras are spread along the lateral axis, sharing the heading.
+  - Zombie payload: `vx`, `vz` (unit heading), `ownerId`, `targetId`. Creatures move `speed * heading`; foxes
+    zig-zag perpendicular to the heading. Creatures of different owners collide, same owner never.
+  - Out when |x| > 1150 or |z| > 1150; the axis with the larger excess names the edge. The owner of that edge
+    is hit (1 damage, `player.damage (id, hp, attackerId)`, firer scores, `zombie.out-of-bounds (id, firer, ownerId)`)
+    if they are seated, alive, connected and not the firer. Otherwise (empty edge, own edge, knocked out, held
+    seat) the creature just disappears: no damage, no score, `hitPlayerId` null.
+    A corner exit with equal excess on both axes counts as the N/S edge. Bots only exist in solo; brawl targeting and
+    hits ignore bots. Brawl seats are compacted to 0..n-1 at match start (3 players → N, S, W).
+  - `place.wall (lateral)`: lateral coordinate (x for N/S, z for W/E, ±800); wall 200 in front of the edge,
+    extending along the lateral axis (`axis: 'x'` on N/S, `'z'` on W/E), blocks other owners' creatures within 50
+    across its width/2. Shield: blocks other owners' creatures within 150 of the edge line and 300 laterally.
+  - Hazards and normal power-ups spawn within ±800 on both axes.
+  - Server hook for knockouts: a player with `alive === false` is skipped as target and as hit victim;
+    `Game.refreshTargets()` re-targets everyone and broadcasts `target` (call it after changing `alive`).
+- Brawl only **[brawl rules]** (owned by later tasks):
   - server → `standings` `[ { id, name, seat, color, score, hits, kos, captures } ]` sorted by score desc,
     on every score change (also in `state.standings`).
   - server → `player.ko` `{ id, by, respawnAt }`; server → `player.respawn` `(id)`.
