@@ -61,14 +61,15 @@ describe('power-ups (A5)', () => {
   });
 
   it('is not collected twice', () => {
-    const { game, a } = startPlaying();
+    const { game, a, b } = startPlaying();
     addPowerUp(game, 0, 0);
     addZombie(game, 'a', 0, 0);
     addZombie(game, 'b', 0, 10);
     game.checkPowerUpCollisions();
     game.checkPowerUpCollisions();
     expect(a.socket.events('powerup.collect')).toHaveLength(1);
-    expect(a.player.activePowerUps).toHaveLength(1);
+    // Both creatures are in range in the same tick; which one is first depends on the random ids' key order.
+    expect(a.player.activePowerUps.length + b.player.activePowerUps.length).toBe(1);
   });
 
   it('players standing near it do not collect it', () => {
