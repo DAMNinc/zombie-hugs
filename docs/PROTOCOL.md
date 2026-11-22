@@ -1,7 +1,6 @@
 # Room protocol (issue #137)
 
-Contract between the game server (`lib/controller.ts`) and the client. Parts marked **[brawl rules]** are
-owned by the brawl tasks and are not implemented by the room code; everything else is.
+Contract between the game server (`lib/controller.ts`) and the client.
 Existing events not mentioned here keep their current shape. New payload fields are additive: old
 fields stay so the duel client keeps working.
 
@@ -67,8 +66,8 @@ fields stay so the duel client keeps working.
 - server → `game.countdown` (seconds) unchanged; server → `game.start` now has a payload
   `{ mode, ranked, arena: { kind: 'lane' | 'square' }, roundDurationMs? }` (roundDurationMs for brawl).
 - state (`state`, every 200 ms) adds: `mode`, per player `seat`, `color`, `edge`, `isBot`, `connected`;
-  **[brawl rules]** per player `targetId`, `alive` (false while knocked out), and `roundRemainingMs` and
-  `standings` (see below). Zombies add `ownerId` (= firer), `targetId` (brawl), `vx`, `vz` (unit heading; duel:
+  per player `targetId`, `alive` (false while knocked out), and in brawl `roundRemainingMs`, `standings`
+  and (sudden death) `suddenPlayerIds` (see Brawl rules). Zombies add `ownerId` (= firer), `targetId` (brawl), `vx`, `vz` (unit heading; duel:
   vx 0, vz = direction).
 - client → `target.set` `(playerId)`: brawl only; must be another alive seated player, else ignored.
   server → `target` `(playerId, targetId)` broadcast (also when the server retargets). Default target: next
@@ -104,13 +103,32 @@ fields stay so the duel client keeps working.
   - Hazards and normal power-ups spawn within ±800 on both axes.
   - Server hook for knockouts: a player with `alive === false` is skipped as target and as hit victim;
     `Game.refreshTargets()` re-targets everyone and broadcasts `target` (call it after changing `alive`).
-- Brawl only **[brawl rules]** (owned by later tasks):
-  - server → `standings` `[ { id, name, seat, color, score, hits, kos, captures } ]` sorted by score desc,
-    on every score change (also in `state.standings`).
-  - server → `player.ko` `{ id, by, respawnAt }`; server → `player.respawn` `(id)`.
-  - central power-up: server → `powerup.telegraph` `{ id, position, spawnAt }` ~3 s before it appears, then
-    the normal `powerup.spawn` with `central: true`; capturing it emits `powerup.collect` as today and scores.
-  - server → `sudden.death` `{ mode: 'brawl', playerIds }` when time runs out with a tie at the top.
+- Brawl rules (implemented in `lib/controller.ts`; unranked, duel/solo untouched):
+  - One timed round: `BRAWL_ROUND_MS` 120000. `game.start` carries `roundDurationMs`; `state.roundRemainingMs` counts
+    down (0 in sudden death). The duel 90 s speed-up never applies. No best-of rounds, no `round.end`.
+  - Points: a hit (a creature leaves through an opponent's edge) = 1, doubled by the double-points power-up; a
+    knockout (that hit takes the victim to 0 HP) = +2 flat; capturing the central power-up = +2 flat. Walls cost 3.
+    Combo bonuses and upgrade levels work off score as before.
+  - Knockout: at 0 HP the player is `alive:false`: server → `player.ko` `{ id, by, respawnAt }` (`by` = the firer).
+    Knocked out they cannot fire, move, shield, place walls or `target.set`, take no hits (their edge is empty, a
+    crossing creature just disappears) and are skipped as a target. After `RESPAWN_MS` 3000: full HP, `alive:true`,
+    lateral 0, server → `player.respawn` `(id)`. Creatures they already fired keep flying and can score. Knocking a player out also ends their shield (`shield.expire`) and held movement (`move.end`);
+    heals (power-up or spectator `heal_all`) skip them.
+  - Central power-up: first spawn 15 s into the round, then every 20 s (`CENTRAL_*` constants). server →
+    `powerup.telegraph` `{ id, position: {0,0,0}, spawnAt }` 3 s earlier, then `powerup.spawn` with the same `id`
+    and `central: true` (random type). The first creature within the collect radius takes it: `powerup.collect`
+    as usual, effect and +2 to the creature's owner (`captures` +1). Expires after 12 s like others; regular
+    random power-ups continue (the central one does not count towards their cap of 3).
+  - server → `standings` `[ { id, name, seat, color, score, hits, kos, captures } ]` sorted by score desc, then
+    hits, then seat; sent at match start and whenever it changes; also `state.standings`.
+  - Round end at 0 remaining: a unique top score wins. A tie at the top → `phase:'sudden_death'`, server →
+    `sudden.death` `{ mode:'brawl', playerIds }` (the tied players; also `state.suddenPlayerIds`). The first tied
+    player to score any points (hit, knockout bonus or capture) wins; other players keep playing but cannot win.
+    After `BRAWL_SUDDEN_CAP_MS` 60000 without a winner the tied player with more hits, then more knockouts, then the
+    lowest seat wins. If the tied players leave, the leader/best remaining wins.
+  - server → `match.over` `{ mode:'brawl', ranked:false, winner, roundWins, standings, stats }`, no ELO; rematch
+    and `lobby.return` as for any match. Rules state is timestamp-driven: there are no extra timers to clean up
+    (`stop()`, `resetToLobby` and match over also clear the pending central power-up and sudden-death state).
 - Reconnect (every phase except `lobby`): when a seated human's socket closes, or they stop pinging for 5 s, the
   server keeps the seat for `RECONNECT_WINDOW_MS` = 15 s: `connected:false` in `lobby`/`state`, server →
   `player.disconnected` `{ id, until }` (`until` = epoch ms). The held seat does nothing: no firing, no
@@ -132,7 +150,6 @@ fields stay so the duel client keeps working.
 - server → `match.over` adds `mode` and `ranked`. Duel payload otherwise unchanged (elo, leaderboard).
   Solo: `{ mode:'solo', ranked:false, winner, loser, roundWins, stats }` (no ELO change; the winner may be the
   bot, `winner`/`loser` are player ids).
-  Brawl: `{ mode:'brawl', ranked:false, winner, roundWins, standings, stats }`. **[brawl rules]** `standings`
-  currently has `score` and `hits` (creatures that scored); `kos`/`captures` are 0 until brawl scoring lands.
+  Brawl: `{ mode:'brawl', ranked:false, winner, roundWins, standings, stats }` (`roundWins` stays 0s, see Brawl rules).
 - `round.end` `scores` has an entry per seated player (two in duel/solo, as before).
 - `lobby` is also sent when `phase` changes (countdown, start, match over, reset).

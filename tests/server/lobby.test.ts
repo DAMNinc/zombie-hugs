@@ -286,7 +286,7 @@ describe('mode by headcount', () => {
     expect(game.mode).toBe('brawl');
     expect(Object.values(game.players).some(p => p.isBot)).toBe(false);
     vi.advanceTimersByTime(3000);
-    expect(sockets[0].events('game.start')[0].args[0]).toEqual({ mode: 'brawl', ranked: false, arena: { kind: 'square' } });
+    expect(sockets[0].events('game.start')[0].args[0]).toEqual({ mode: 'brawl', ranked: false, arena: { kind: 'square' }, roundDurationMs: 120000 });
     const leaderboard = JSON.stringify(controller.getLeaderboard());
 
     // a creature leaving the arena hurts exactly one other player, attributed to the firer
@@ -299,16 +299,11 @@ describe('mode by headcount', () => {
     expect(game.players[dmg[0]].hp).toBe(9);
     expect(sockets[1].events('zombie.out-of-bounds')[0].args[2]).toBe(dmg[0]);
 
-    // round ends when one player is left standing
-    for (const p of Object.values(game.players)) if (p.id !== `br${n}-1`) p.hp = 0;
-    expect(game.checkRoundEnd()).toBe(true);
-    expect(sockets[0].events('round.end')[0].args[0].winner).toBe(`br${n}-1`);
-    expect(Object.keys(sockets[0].events('round.end')[0].args[0].scores)).toHaveLength(n);
-
-    // a decisive second round win ends the match with brawl payload
-    game.phase = 'playing';
-    game.roundWins[`br${n}-1`] = 1;
-    expect(game.checkRoundEnd()).toBe(true);
+    // brawl is one timed round (brawl-rules.test.ts): the clock decides, the leader wins
+    game.players[`br${n}-1`].score = 5;
+    vi.advanceTimersByTime(120000);
+    game.update(0.1);
+    expect(game.phase).toBe('match_over');
     const over = sockets[0].events('match.over')[0].args[0];
     expect(over).toMatchObject({ mode: 'brawl', ranked: false, winner: `br${n}-1` });
     expect(over.standings).toHaveLength(n);

@@ -61,6 +61,16 @@ const HAZARD_CLEAR_LANE = 60;
 // Sudden death constants
 const SUDDEN_DEATH_TIME_MS = 90000;
 
+// Brawl party round (unranked free-for-all)
+const BRAWL_ROUND_MS = 120000;
+const RESPAWN_MS = 3000;
+const CENTRAL_FIRST_MS = 15000;
+const CENTRAL_INTERVAL_MS = 20000;
+const CENTRAL_TELEGRAPH_MS = 3000;
+const BRAWL_SUDDEN_CAP_MS = 60000;
+const KO_BONUS = 2;
+const CAPTURE_BONUS = 2;
+
 // Wall constants
 const WALL_COST = 3;
 const WALL_DURATION_MS = 5000;
@@ -82,6 +92,8 @@ interface PowerUp {
   type: PowerUpType;
   position: Position;
   expiresAt: number;
+  /** Brawl: the telegraphed power-up in the middle of the arena. */
+  central?: boolean;
 }
 
 interface Hazard {
@@ -196,6 +208,13 @@ class Game {
 
   // New feature state
   powerUps: Record<string, PowerUp>;
+  /** Brawl: when the next central power-up appears, and the telegraph already announced for it. */
+  centralSpawnAt: number;
+  centralPending: { id: string; spawnAt: number } | null;
+  /** Brawl sudden death: the tied players who can still win, and when it began. */
+  suddenIds: string[];
+  suddenStart: number;
+  lastStandingsKey: string;
   hazards: Hazard[];
   walls: Record<string, Wall>;
   roundStartTime: number;
@@ -225,6 +244,11 @@ class Game {
     this.queue = [];
 
     this.powerUps = {};
+    this.centralSpawnAt = 0;
+    this.centralPending = null;
+    this.suddenIds = [];
+    this.suddenStart = 0;
+    this.lastStandingsKey = '';
     this.hazards = [];
     this.walls = {};
     this.roundStartTime = 0;
@@ -291,7 +315,7 @@ class Game {
     const now = Date.now();
     if (now - this.lastPowerUpSpawn < POWERUP_SPAWN_INTERVAL_MS) return;
     // Max 3 power-ups on field at once
-    if (Object.keys(this.powerUps).length >= 3) return;
+    if (Object.values(this.powerUps).filter(p => !p.central).length >= 3) return;
 
     this.lastPowerUpSpawn = now;
     const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
@@ -333,6 +357,12 @@ class Game {
           this.applyPowerUp(player, pu);
           this.emitAll('powerup.collect', puId, player.id, pu.type);
           delete this.powerUps[puId];
+          if (pu.central && this.mode === 'brawl') {
+            player.captures++;
+            this.addScore(player, CAPTURE_BONUS);
+            this.emitStandings();
+            this.checkBrawlEnd(player);
+          }
           break;
         }
       }
@@ -349,6 +379,7 @@ class Game {
         player.activePowerUps.push({ type: 'speed_boost', expiresAt: now + 8000 });
         break;
       case 'heal':
+        if (!player.alive) break; // a knocked-out player cannot be healed (the effect is wasted)
         player.hp = Math.min(MAX_HP, player.hp + 3);
         this.emitAll('player.heal', player.id, player.hp);
         break;
@@ -369,7 +400,7 @@ class Game {
   }
 
   checkSuddenDeath() {
-    if (this.suddenDeath) return;
+    if (this.suddenDeath || this.mode === 'brawl') return;
     const elapsed = Date.now() - this.roundStartTime;
     if (elapsed >= SUDDEN_DEATH_TIME_MS) {
       this.suddenDeath = true;
@@ -383,6 +414,142 @@ class Game {
 
       this.emitAll('sudden.death');
     }
+  }
+
+  /** Adds points and applies the score-driven upgrade level. */
+  addScore(player: Player, points: number) {
+    player.score += points;
+    const oldLevel = player.upgradeLevel;
+    player.upgradeLevel = UPGRADE_THRESHOLDS.filter(t => player.score >= t).length;
+    if (player.upgradeLevel > oldLevel) {
+      this.emitAll('player.upgrade', player.id, player.upgradeLevel);
+    }
+  }
+
+  brawlRemainingMs(): number {
+    if (this.mode !== 'brawl') return 0;
+    if (this.phase === 'playing') return Math.max(0, BRAWL_ROUND_MS - (Date.now() - this.roundStartTime));
+    if (this.phase === 'countdown' || this.phase === 'lobby') return BRAWL_ROUND_MS;
+    return 0;
+  }
+
+  /** Emits `standings` when it differs from the last one sent. */
+  emitStandings(force = false) {
+    if (this.mode !== 'brawl') return;
+    const standings = this.standings();
+    const key = JSON.stringify(standings);
+    if (!force && key === this.lastStandingsKey) return;
+    this.lastStandingsKey = key;
+    this.emitAll('standings', standings);
+  }
+
+  /** Clears the brawl-only pending state (central power-up announcement, sudden-death roster). */
+  resetBrawlState() {
+    this.centralPending = null;
+    this.suddenIds = [];
+  }
+
+  /** Brawl: a KO'd player is out until RESPAWN_MS has passed. */
+  knockOut(victim: Player, by: Player | undefined) {
+    const now = Date.now();
+    victim.alive = false;
+    victim.respawnAt = now + RESPAWN_MS;
+    // Tell clients to drop what the victim was doing (they would otherwise keep a ghost shield / sliding player).
+    if (victim.left) this.emitAll('move.end', -1, victim.id);
+    if (victim.right) this.emitAll('move.end', 1, victim.id);
+    victim.left = false;
+    victim.right = false;
+    if (victim.shield.active) {
+      victim.shield.active = false;
+      this.emitAll('shield.expire', victim.id);
+    }
+    if (by) {
+      by.kos++;
+      this.addScore(by, KO_BONUS);
+    }
+    this.emitAll('player.ko', { id: victim.id, by: by ? by.id : null, respawnAt: victim.respawnAt });
+    this.refreshTargets();
+  }
+
+  /** Brawl per-tick upkeep: respawns, the central power-up cycle and the round clock. */
+  brawlTick(now: number) {
+    for (const p of Object.values(this.players)) {
+      if (p.alive || !p.respawnAt || now < p.respawnAt) continue;
+      p.alive = true;
+      p.hp = MAX_HP;
+      p.respawnAt = 0;
+      if (p.edge) p.position[EDGES[p.edge].axis] = 0;
+      this.emitAll('player.respawn', p.id);
+      this.refreshTargets();
+    }
+
+    if (!this.centralPending && now >= this.centralSpawnAt - CENTRAL_TELEGRAPH_MS) {
+      this.centralPending = { id: crypto.randomBytes(4).toString('hex'), spawnAt: this.centralSpawnAt };
+      this.emitAll('powerup.telegraph', { id: this.centralPending.id, position: { x: 0, y: 0, z: 0 }, spawnAt: this.centralSpawnAt });
+    }
+    if (this.centralPending && now >= this.centralPending.spawnAt) {
+      const powerUp: PowerUp = {
+        id: this.centralPending.id,
+        type: POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)],
+        position: { x: 0, y: 0, z: 0 },
+        expiresAt: now + POWERUP_DURATION_MS,
+        central: true,
+      };
+      this.powerUps[powerUp.id] = powerUp;
+      this.emitAll('powerup.spawn', powerUp);
+      this.centralPending = null;
+      this.centralSpawnAt += CENTRAL_INTERVAL_MS;
+    }
+
+    this.checkBrawlEnd();
+  }
+
+  /**
+   * Brawl round end. Clock at 0: a unique leader wins, a tie at the top goes to sudden death among the tied.
+   * In sudden death the first tied player to score (`scorer`) wins; after BRAWL_SUDDEN_CAP_MS the tied player
+   * with more hits, then more knockouts, then the lowest seat wins. Returns true when the match ended.
+   */
+  checkBrawlEnd(scorer?: Player): boolean {
+    if (this.mode !== 'brawl') return false;
+    if (this.phase === 'playing') {
+      if (this.brawlRemainingMs() > 0) return false;
+      const standings = this.standings();
+      if (standings.length === 0) return false;
+      const tied = standings.filter(s => s.score === standings[0].score);
+      if (tied.length === 1) {
+        this.finishBrawl(tied[0].id);
+        return true;
+      }
+      this.phase = 'sudden_death';
+      this.suddenIds = tied.map(s => s.id);
+      this.suddenStart = Date.now();
+      this.emitAll('sudden.death', { mode: 'brawl', playerIds: this.suddenIds });
+      this.broadcastLobby();
+      return false;
+    }
+    if (this.phase !== 'sudden_death') return false;
+    this.suddenIds = this.suddenIds.filter(id => this.players[id]);
+    if (scorer && this.suddenIds.includes(scorer.id)) {
+      this.finishBrawl(scorer.id);
+      return true;
+    }
+    if (this.suddenIds.length <= 1 || Date.now() - this.suddenStart >= BRAWL_SUDDEN_CAP_MS) {
+      const hits = (p: Player) => this.stats[p.id]?.zombiesScored ?? 0;
+      const byTiebreak = (a: Player, b: Player) => hits(b) - hits(a) || b.kos - a.kos || a.seat - b.seat;
+      // Every tied player left: the best remaining player by score decides, then the same tiebreak.
+      const pool = this.suddenIds.length > 0 ? this.suddenIds.map(id => this.players[id]) : Object.values(this.players);
+      if (pool.length === 0) return false;
+      pool.sort(this.suddenIds.length > 0 ? byTiebreak : (a, b) => b.score - a.score || byTiebreak(a, b));
+      this.finishBrawl(pool[0].id);
+      return true;
+    }
+    return false;
+  }
+
+  finishBrawl(winnerId: string) {
+    this.emitStandings();
+    this.endBrawlMatch(winnerId);
+    this.broadcastLobby();
   }
 
   // Check synergy: if player fired specific combos recently
@@ -619,6 +786,7 @@ class Game {
 
     onPlayer('fire', (clientPosition: Position, clientWeaponCode: number, clientChargeTime?: number) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
+      if (!player.alive) return;
 
       const weaponCode = validWeaponCode(clientWeaponCode);
       const brawl = this.mode === 'brawl' && !!player.edge;
@@ -710,7 +878,7 @@ class Game {
     });
 
     onPlayer('move.start', (keyCode: number) => {
-      if (!isFiniteNumber(keyCode)) return;
+      if (!isFiniteNumber(keyCode) || !player.alive) return;
       player.toggleMovement(keyCode, true);
       this.emitAll('move.start', keyCode, player.id);
     });
@@ -734,6 +902,7 @@ class Game {
 
     onPlayer('shield', () => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
+      if (!player.alive) return;
       const now = Date.now();
       if (player.shield.active) return;
       if (now < player.shield.cooldownUntil) return;
@@ -747,6 +916,7 @@ class Game {
     // Wall placement
     onPlayer('place.wall', (clientX: number) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
+      if (!player.alive) return;
       if (!isFiniteNumber(clientX)) {
         logger.debug('Dropped invalid place.wall from %s', player.id);
         return;
@@ -774,6 +944,7 @@ class Game {
       }
       this.walls[wall.id] = wall;
       this.emitAll('wall.place', wall);
+      this.emitStandings();
     });
 
     onPlayer('target.set', (targetId: unknown) => {
@@ -781,7 +952,7 @@ class Game {
       if (typeof targetId !== 'string' || targetId === player.id) return;
       if (!Object.prototype.hasOwnProperty.call(this.players, targetId)) return;
       const target = this.players[targetId];
-      if (target.isBot || !target.alive) return;
+      if (target.isBot || !target.alive || !player.alive) return;
       if (player.targetId === targetId) return;
       player.targetId = targetId;
       this.emitAll('target', player.id, targetId);
@@ -954,8 +1125,17 @@ class Game {
         this.roundStartTime = Date.now();
         this.suddenDeath = false;
         this.lastPowerUpSpawn = 0;
+        this.centralSpawnAt = this.roundStartTime + CENTRAL_FIRST_MS;
+        this.resetBrawlState();
         this.generateHazards();
-        this.emitAll('game.start', { mode: this.mode, ranked: this.isRanked(), arena: { kind: this.arenaKind() } });
+        const brawl = this.mode === 'brawl';
+        this.emitAll('game.start', {
+          mode: this.mode,
+          ranked: this.isRanked(),
+          arena: { kind: this.arenaKind() },
+          ...(brawl ? { roundDurationMs: BRAWL_ROUND_MS } : {}),
+        });
+        this.emitStandings(true);
         this.broadcastLobby();
       }
     }, 1000);
@@ -994,6 +1174,7 @@ class Game {
     this.walls = {};
     this.hazards = [];
     this.suddenDeath = false;
+    this.resetBrawlState();
     this.roundWins = {};
     this.stats = {};
     for (const id in this.players) {
@@ -1018,6 +1199,7 @@ class Game {
     }
     this.zombies = {};
     this.phase = 'match_over';
+    this.resetBrawlState();
     this.emitBrawlOver(winnerId);
   }
 
@@ -1107,7 +1289,8 @@ class Game {
       this.checkReady();
     } else if (this.mode === 'brawl' && humansLeft.length >= 2) {
       // A brawl carries on while at least two humans remain.
-      this.checkRoundEnd();
+      this.checkBrawlEnd();
+      this.emitStandings();
       this.checkRematch();
       this.broadcastLobby();
     } else if (this.mode === 'brawl' && humansLeft.length === 1) {
@@ -1188,6 +1371,7 @@ class Game {
         }
         case 'heal_all': {
           for (const pid in this.players) {
+            if (!this.players[pid].alive) continue;
             this.players[pid].hp = Math.min(MAX_HP, this.players[pid].hp + 2);
             this.emitAll('player.heal', pid, this.players[pid].hp);
           }
@@ -1234,6 +1418,10 @@ class Game {
 
     // Check sudden death
     this.checkSuddenDeath();
+    if (this.mode === 'brawl') {
+      this.brawlTick(now);
+      if (this.phase === 'match_over') return;
+    }
 
     // Expire player power-ups
     for (const key in this.players) {
@@ -1251,6 +1439,7 @@ class Game {
 
     for (const key in this.players) {
       const player = this.players[key];
+      if (!player.alive) continue;
       player.update(elapsed, this.mode === 'brawl');
     }
 
@@ -1334,6 +1523,7 @@ class Game {
         const firingPlayer = this.players[zombie.firedByPlayer];
 
         const brawl = this.mode === 'brawl';
+        let scorer: Player | undefined;
         const opponentId = brawl ? this.pickBrawlVictim(zombie) : this.pickDamageTarget(zombie);
 
         // A player in their reconnect window cannot be hurt: the creature just disappears, nobody scores.
@@ -1347,6 +1537,7 @@ class Game {
         if (firingPlayer && (!brawl || opponentId)) {
           const timeSinceLast = now - firingPlayer.lastScoreTime;
           let points = 1;
+          scorer = firingPlayer;
 
           // Double points power-up
           if (firingPlayer.hasPowerUp('double_points')) points *= 2;
@@ -1354,31 +1545,32 @@ class Game {
           if (timeSinceLast < COMBO_WINDOW_MS && firingPlayer.lastScoreTime > 0) {
             firingPlayer.comboCount++;
             const comboBonus = Math.floor(firingPlayer.comboCount * 0.5);
-            firingPlayer.score += points + comboBonus;
+            this.addScore(firingPlayer, points + comboBonus);
             this.emitAll('combo', firingPlayer.id, firingPlayer.comboCount);
           } else {
             firingPlayer.comboCount = 0;
-            firingPlayer.score += points;
+            this.addScore(firingPlayer, points);
           }
           firingPlayer.lastScoreTime = now;
-
-          const oldLevel = firingPlayer.upgradeLevel;
-          firingPlayer.upgradeLevel = UPGRADE_THRESHOLDS.filter(t => firingPlayer.score >= t).length;
-          if (firingPlayer.upgradeLevel > oldLevel) {
-            this.emitAll('player.upgrade', firingPlayer.id, firingPlayer.upgradeLevel);
-          }
 
           this.stats[zombie.firedByPlayer].zombiesScored++;
         }
 
         if (opponentId && this.players[opponentId]) {
-          this.players[opponentId].hp -= 1;
-          this.emitAll('player.damage', opponentId, this.players[opponentId].hp, zombie.firedByPlayer);
+          const victim = this.players[opponentId];
+          victim.hp -= 1;
+          this.emitAll('player.damage', opponentId, victim.hp, zombie.firedByPlayer);
+          if (brawl && victim.hp <= 0 && victim.alive) this.knockOut(victim, firingPlayer);
         }
 
         this.emitAll('zombie.out-of-bounds', zombie.id, zombie.firedByPlayer, opponentId);
         delete this.zombies[key];
 
+        if (brawl) {
+          this.emitStandings();
+          if (this.checkBrawlEnd(scorer)) break;
+          continue;
+        }
         if (this.checkRoundEnd()) break;
         continue;
       }
@@ -1452,13 +1644,14 @@ class Game {
         color: p.color,
         score: p.score,
         hits: this.stats[p.id]?.zombiesScored ?? 0,
-        kos: 0,
-        captures: 0,
+        kos: p.kos,
+        captures: p.captures,
       }))
-      .sort((x, y) => y.score - x.score);
+      .sort((x, y) => y.score - x.score || y.hits - x.hits || x.seat - y.seat);
   }
 
   checkRoundEnd(): boolean {
+    if (this.mode === 'brawl') return false; // brawl is timed: see checkBrawlEnd
     if (this.phase !== 'playing' && this.phase !== 'sudden_death') return false;
     const playerIds = Object.keys(this.players);
     if (playerIds.length < 2) return false;
@@ -1507,9 +1700,7 @@ class Game {
       this.phase = 'match_over';
       const ranked = this.isRanked();
 
-      if (this.mode === 'brawl') {
-        this.emitBrawlOver(roundWinner);
-      } else if (!ranked) {
+      if (!ranked) {
         this.emitAll('match.over', {
           mode: this.mode,
           ranked,
@@ -1580,6 +1771,12 @@ class Game {
       state.zombies[key] = this.zombies[key].toJSON();
     }
 
+    if (this.mode === 'brawl' && this.phase !== 'lobby') {
+      state.roundRemainingMs = this.brawlRemainingMs();
+      state.standings = this.standings();
+      if (this.phase === 'sudden_death') state.suddenPlayerIds = this.suddenIds;
+    }
+
     return state;
   }
 
@@ -1620,6 +1817,7 @@ class Game {
     for (const id in this.players) {
       this.players[id].clearDisconnectTimer();
     }
+    this.resetBrawlState();
   }
 
   /** Stops and deletes the game once it has had nobody in it for EMPTY_GAME_TTL_MS. */
@@ -1692,6 +1890,10 @@ class Player {
   targetId: string | null;
   /** False while knocked out (brawl KO/respawn); a not-alive player is skipped as target and as hit victim. */
   alive: boolean;
+  /** Brawl: epoch ms when a knocked-out player comes back. */
+  respawnAt: number;
+  kos: number;
+  captures: number;
 
   constructor(
     socket: Socket,
@@ -1732,6 +1934,9 @@ class Player {
     this.homeX = x;
     this.targetId = null;
     this.alive = true;
+    this.respawnAt = 0;
+    this.kos = 0;
+    this.captures = 0;
   }
 
   clearDisconnectTimer() {
@@ -1799,6 +2004,10 @@ class Player {
   resetForRound() {
     this.score = 0;
     this.hp = MAX_HP;
+    this.alive = true;
+    this.respawnAt = 0;
+    this.kos = 0;
+    this.captures = 0;
     this.ready = false;
     this.shield = { active: false, cooldownUntil: 0, expiresAt: 0 };
     this.lastScoreTime = 0;
