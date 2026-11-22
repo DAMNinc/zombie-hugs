@@ -8,7 +8,7 @@ import {
 } from 'unique-names-generator';
 import type { Socket } from 'socket.io';
 import logger from './logger';
-import { MAX_CHARGE_MS, clampArenaX, effectiveCharge, isFiniteNumber, validFireX, validWeaponCode } from './validate';
+import { ARENA_HALF_WIDTH, ARENA_MARGIN, MAX_CHARGE_MS, clampArenaX, effectiveCharge, isFiniteNumber, validFireX, validWeaponCode } from './validate';
 
 interface Position {
   x: number;
@@ -39,6 +39,8 @@ const POWERUP_TYPES: PowerUpType[] = ['rapid_fire', 'speed_boost', 'heal', 'doub
 
 // Arena hazard constants
 const HAZARD_COUNT = 2;
+// A damage hazard's nearest edge stays at least this far from the centre lane (x = 0)
+const HAZARD_CLEAR_LANE = 60;
 
 // Sudden death constants
 const SUDDEN_DEATH_TIME_MS = 90000;
@@ -237,22 +239,34 @@ class Game {
 
   generateHazards() {
     this.hazards = [];
-    const hazardTypes: Array<'damage' | 'slow' | 'wind'> = ['damage', 'slow', 'wind'];
-    for (let i = 0; i < HAZARD_COUNT; i++) {
-      const type = hazardTypes[i % hazardTypes.length];
-      const hazard: Hazard = {
+    // Pick HAZARD_COUNT distinct types at random (Fisher-Yates on a copy).
+    const pool: Array<'damage' | 'slow' | 'wind'> = ['damage', 'slow', 'wind'];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.min(i, Math.floor(Math.random() * (i + 1)));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const limit = ARENA_HALF_WIDTH - ARENA_MARGIN;
+    for (const type of pool.slice(0, HAZARD_COUNT)) {
+      const width = 150 + Math.random() * 150;
+      const depth = 200 + Math.random() * 200;
+      let x: number;
+      if (type === 'damage') {
+        // Keep the centre lane (x = 0) clear: nearest edge at least HAZARD_CLEAR_LANE from it.
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const minX = HAZARD_CLEAR_LANE + width / 2;
+        const maxX = limit - width / 2;
+        x = side * (minX + Math.random() * (maxX - minX));
+      } else {
+        x = (Math.random() - 0.5) * 2 * (limit - width / 2);
+      }
+      this.hazards.push({
         id: crypto.randomBytes(4).toString('hex'),
-        position: {
-          x: (Math.random() - 0.5) * 600,
-          y: 0,
-          z: (Math.random() - 0.5) * 1200,
-        },
-        width: 150 + Math.random() * 150,
-        depth: 200 + Math.random() * 200,
+        position: { x, y: 0, z: (Math.random() - 0.5) * 1200 },
+        width,
+        depth,
         type,
         windDirection: type === 'wind' ? (Math.random() > 0.5 ? 1 : -1) : undefined,
-      };
-      this.hazards.push(hazard);
+      });
     }
     this.emitAll('hazards', this.hazards);
   }
@@ -861,10 +875,10 @@ class Game {
         if (hx < hazard.width / 2 && hz < hazard.depth / 2) {
           switch (hazard.type) {
             case 'damage':
-              // Tick damage — reduce health slowly
-              if (!zombie.lastHazardDamage || now - zombie.lastHazardDamage > 500) {
+              // One hit per creature per damage hazard, however long it stays inside
+              if (!zombie.hazardsHit.has(hazard.id)) {
+                zombie.hazardsHit.add(hazard.id);
                 zombie.health -= 1;
-                zombie.lastHazardDamage = now;
                 if (zombie.health <= 0) {
                   this.emitAll('zombie.hazard', zombie.id, hazard.id);
                   delete this.zombies[key];
@@ -1321,7 +1335,7 @@ class Zombie {
   weaponCode: number;
   spawnTime: number;
   baseX: number;
-  lastHazardDamage: number;
+  hazardsHit: Set<string>;
   chargeRatio: number;
 
   constructor(
@@ -1344,7 +1358,7 @@ class Zombie {
     this.weaponCode = weaponCode;
     this.spawnTime = Date.now();
     this.baseX = position.x;
-    this.lastHazardDamage = 0;
+    this.hazardsHit = new Set();
     this.chargeRatio = chargeRatio;
   }
 

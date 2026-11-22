@@ -92,6 +92,13 @@ function updateGameState(elapsed: number): void {
     }
   }
 
+  // Pulse hazards
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 250);
+  for (const group of hazardMeshes) {
+    const mat = group.userData?.fillMat;
+    if (mat) mat.opacity = 0.25 + 0.25 * pulse;
+  }
+
   // Rotate power-up meshes
   for (const puId in powerUpMeshes) {
     if (powerUpMeshes[puId]) {
@@ -294,33 +301,83 @@ function removePowerUpMesh(id: string): void {
 }
 
 const HAZARD_COLORS: Record<string, number> = {
-  damage: 0xff0000,
-  slow: 0x0066ff,
-  wind: 0x00ff66,
+  damage: 0xff2222,
+  slow: 0x2288ff,
+  wind: 0xaaffff,
 };
+const HAZARD_LABELS: Record<string, string> = { damage: 'DAMAGE', slow: 'SLOW', wind: 'WIND' };
+const HAZARD_HEIGHT = 70;
+let hazardKillAnnounced = false;
 
-function renderHazards(hazards: any[]): void {
-  // Clear old hazard meshes
+function makeHazardLabel(text: string, color: number): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.font = 'bold 44px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeText(text, 128, 34);
+    ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+    ctx.fillText(text, 128, 34);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+  sprite.scale.set(160, 40, 1);
+  sprite.renderOrder = 10;
+  return sprite;
+}
+
+function removeHazardMeshes(): void {
   for (const mesh of hazardMeshes) {
     scene.remove(mesh);
     disposeObject(mesh);
   }
   hazardMeshes = [];
+}
+
+function renderHazards(hazards: any[]): void {
+  removeHazardMeshes();
+  hazardKillAnnounced = false; // 'hazards' is re-sent for every round
 
   for (const h of hazards) {
     const color = HAZARD_COLORS[h.type] || 0xffffff;
-    const geometry = new THREE.PlaneGeometry(h.width, h.depth);
-    const material = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.2,
-      side: THREE.DoubleSide,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(h.position.x, 1, h.position.z);
-    scene.add(mesh);
-    hazardMeshes.push(mesh);
+    const group = new THREE.Group();
+    group.position.set(h.position.x, 0, h.position.z);
+
+    // Floor fill (pulses)
+    const fillMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false });
+    const fill = new THREE.Mesh(new THREE.PlaneGeometry(h.width, h.depth), fillMat);
+    fill.rotation.x = -Math.PI / 2;
+    fill.position.y = 1;
+    group.add(fill);
+
+    // Edges of the volume, readable from first person
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(h.width, HAZARD_HEIGHT, h.depth)),
+      new THREE.LineBasicMaterial({ color }),
+    );
+    edges.position.y = HAZARD_HEIGHT / 2;
+    group.add(edges);
+
+    // Faint translucent walls so the zone reads as a volume
+    const walls = new THREE.Mesh(
+      new THREE.BoxGeometry(h.width, HAZARD_HEIGHT, h.depth),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    walls.position.y = HAZARD_HEIGHT / 2;
+    group.add(walls);
+
+    const label = makeHazardLabel(HAZARD_LABELS[h.type] || String(h.type).toUpperCase(), color);
+    label.position.y = HAZARD_HEIGHT + 40;
+    group.add(label);
+
+    group.userData.fillMat = fillMat;
+    scene.add(group);
+    hazardMeshes.push(group);
   }
 }
 
@@ -345,11 +402,7 @@ function removeWallMesh(id: string): void {
 function clearArenaFeatures(): void {
   for (const id in powerUpMeshes) removePowerUpMesh(id);
   for (const id in wallMeshes) removeWallMesh(id);
-  for (const mesh of hazardMeshes) {
-    scene.remove(mesh);
-    disposeObject(mesh);
-  }
-  hazardMeshes = [];
+  removeHazardMeshes();
 }
 
 // === REPLAY SYSTEM ===
@@ -801,7 +854,10 @@ function setupEvents(): void {
     const zombie = gameState.zombies[zombieId];
     if (zombie) {
       gameState.explosions.push(new Explosion(scene, zombie.getMesh().position, 0));
-      if (killFeed) killFeed.add(`${zombie.name} destroyed by hazard!`, '#ff4444');
+      if (killFeed && !hazardKillAnnounced) {
+        hazardKillAnnounced = true;
+        killFeed.add(`A damage zone took ${zombie.name}!`, '#ff4444');
+      }
       removeZombie(zombieId);
     }
   });
