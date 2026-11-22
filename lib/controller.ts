@@ -609,7 +609,8 @@ class Game {
 
   checkReady() {
     const playerIds = Object.keys(this.players);
-    if (playerIds.length < 1) return;
+    // A match needs an opponent: never start with a lone player.
+    if (playerIds.length < 2) return;
     if (this.phase !== 'lobby' && this.phase !== 'round_over') return;
 
     const allReady = playerIds.every(id => this.players[id].ready);

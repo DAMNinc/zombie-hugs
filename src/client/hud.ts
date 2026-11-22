@@ -8,6 +8,9 @@ export default class HUD {
   private opponentScoreText: HTMLSpanElement;
   private opponentHpBar: HTMLDivElement;
   private countdownOverlay: HTMLDivElement;
+  private waitingOverlay: HTMLDivElement | null = null;
+  private waitingTitle: HTMLDivElement | null = null;
+  private waitingLink: HTMLInputElement | null = null;
   private gameOverOverlay: HTMLDivElement;
   private roundIndicator: HTMLDivElement;
   private comboText: HTMLDivElement;
@@ -328,7 +331,81 @@ export default class HUD {
     }
   }
 
+  /** Lobby overlay for a lone player: waiting for an opponent, or the opponent just left. Never shown to spectators. */
+  showWaiting(opponentLeft: boolean = false): void {
+    if (this.isSpectator) return;
+    if (!this.waitingOverlay) {
+      const overlay = document.createElement('div');
+      overlay.id = 'waiting-overlay';
+      overlay.style.cssText = `
+        position: fixed; top: 22%; left: 50%; transform: translateX(-50%);
+        width: min(440px, calc(100% - 24px)); box-sizing: border-box;
+        display: flex; flex-direction: column; align-items: center; gap: 12px;
+        background: rgba(0,0,0,0.75); border: 2px solid #555; border-radius: 8px;
+        padding: 16px; color: #fff; text-align: center; pointer-events: auto;
+      `;
+      const title = document.createElement('div');
+      title.style.cssText = 'font-size: 20px; font-weight: bold; color: #ffcc00; text-shadow: 1px 1px 2px #000;';
+      const hint = document.createElement('div');
+      hint.style.cssText = 'font-size: 13px; color: #ccc;';
+      hint.textContent = 'Share this link with a friend to start:';
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; gap: 8px; width: 100%;';
+      const link = document.createElement('input');
+      link.type = 'text';
+      link.readOnly = true;
+      link.style.cssText = `
+        flex: 1; min-width: 0; padding: 10px 8px; font: 13px monospace; color: #fff;
+        background: #222; border: 1px solid #555; border-radius: 4px;
+      `;
+      link.addEventListener('focus', () => link.select());
+      const btn = document.createElement('button');
+      btn.textContent = 'Copy link';
+      btn.style.cssText = `
+        padding: 10px 14px; font: bold 13px monospace; color: #fff; cursor: pointer;
+        background: #4caf50; border: none; border-radius: 4px; min-height: 44px;
+      `;
+      btn.addEventListener('click', () => {
+        const done = () => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
+        };
+        const fallback = () => {
+          link.focus();
+          link.select();
+          link.setSelectionRange(0, link.value.length);
+          try { if (document.execCommand('copy')) done(); } catch (_e) { /* text stays selected */ }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(link.value).then(done, fallback);
+        } else {
+          fallback();
+        }
+      });
+      row.appendChild(link);
+      row.appendChild(btn);
+      overlay.appendChild(title);
+      overlay.appendChild(hint);
+      overlay.appendChild(row);
+      this.container.appendChild(overlay);
+      this.waitingOverlay = overlay;
+      this.waitingTitle = title;
+      this.waitingLink = link;
+    }
+    this.waitingTitle!.textContent = opponentLeft
+      ? 'Opponent left \u2014 waiting for a new opponent'
+      : 'Waiting for an opponent\u2026';
+    this.waitingLink!.value = window.location.href;
+    this.waitingOverlay.style.display = 'flex';
+    this.hideCountdown();
+  }
+
+  hideWaiting(): void {
+    if (this.waitingOverlay) this.waitingOverlay.style.display = 'none';
+  }
+
   showCountdown(seconds: number): void {
+    this.hideWaiting();
     this.countdownOverlay.style.display = 'flex';
     this.countdownOverlay.textContent = String(seconds);
   }

@@ -91,6 +91,28 @@ describe('ready and countdown', () => {
     expect(game.phase).toBe('lobby');
   });
 
+  it('a lone ready player stays in the lobby (no solo match)', () => {
+    const game = new Game(1, 'test');
+    const a = makePlayer('a', 'solo-a', -1000, -1);
+    game.joinPlayer(a.player);
+    a.socket.trigger('ready');
+    vi.advanceTimersByTime(10000);
+    expect(game.phase).toBe('lobby');
+    expect(a.socket.events('game.countdown')).toHaveLength(0);
+  });
+
+  it('the second player joining and readying starts the countdown', () => {
+    const game = new Game(1, 'test');
+    const a = makePlayer('a', 'two-a', -1000, -1);
+    const b = makePlayer('b', 'two-b', 1000, 1);
+    game.joinPlayer(a.player);
+    a.socket.trigger('ready');
+    game.joinPlayer(b.player);
+    expect(game.phase).toBe('lobby');
+    b.socket.trigger('ready');
+    expect(game.phase).toBe('countdown');
+  });
+
   it('counts down 3,2,1 then starts playing after 3s', () => {
     const { game, a, b } = makeGameWithTwoPlayers();
     a.socket.trigger('ready');

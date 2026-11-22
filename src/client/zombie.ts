@@ -442,6 +442,9 @@ function setupEvents(): void {
       });
     }
 
+    // Alone in the lobby until an opponent shows up.
+    if (hud) hud.showWaiting(false);
+
     // Send ready signal
     socket.emit('ready');
   });
@@ -457,6 +460,7 @@ function setupEvents(): void {
 
     if (player.id !== gameState.myId) {
       scene.add(p.getMesh());
+      if (hud) hud.hideWaiting();
     }
 
     socket.emit('ready');
@@ -636,6 +640,8 @@ function setupEvents(): void {
     gameConsole.info('Player exited! ' + player.name);
     scene.remove(player.getMesh());
     delete gameState.players[playerId];
+    // The opponent (not me) left: wait for a replacement.
+    if (playerId !== gameState.myId && gameState.myId && hud) hud.showWaiting(true);
   });
 
   // Game lifecycle events
