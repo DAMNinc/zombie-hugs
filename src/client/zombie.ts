@@ -982,6 +982,10 @@ function joinPlayer(gameId: number): void {
     window.dispatchEvent(ev);
   });
 
+  socket.on('join.error.notfound', () => {
+    window.location.href = '/';
+  });
+
   socket.emit('join.player', { gameId: gameId });
 }
 
@@ -989,6 +993,10 @@ function joinPlayer(gameId: number): void {
  * Tells the game that a player wants to join as spectator.
  */
 function joinSpectator(gameId: number): void {
+  socket.on('join.error.notfound', () => {
+    window.location.href = '/';
+  });
+
   socket.emit('join.spectator', { gameId: gameId });
   camController = new CamController(camera, null, 0);
 

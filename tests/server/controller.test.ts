@@ -312,13 +312,11 @@ describe('round and match end', () => {
 });
 
 describe('player exit', () => {
-  it('removes the player, broadcasts and flips the spawn side', () => {
+  it('removes the player and broadcasts', () => {
     const { game, a, b } = startPlaying();
-    const before = game.locationModifier;
     a.socket.trigger('exit');
     expect(game.players['a']).toBeUndefined();
     expect(b.socket.events('player.exit')[0].args).toEqual(['a']);
-    expect(game.locationModifier).toBe(-before);
   });
 
   it.todo('opponent exit mid-game ends the match by forfeit'); // see shared/t2-bugs-found.md

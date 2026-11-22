@@ -164,7 +164,6 @@ class Game {
   players: Record<string, Player>;
   spectators: Record<string, Player>;
   zombies: Record<string, Zombie>;
-  locationModifier: number;
   timestamp: number;
   updating: boolean;
   phase: GamePhase;
@@ -189,7 +188,6 @@ class Game {
     this.players = {};
     this.spectators = {};
     this.zombies = {};
-    this.locationModifier = -1;
     this.timestamp = Date.now();
     this.updating = false;
     this.phase = 'lobby';
@@ -625,7 +623,6 @@ class Game {
     logger.info(`Player ${player.name} (${player.id}) exited`);
     this.emitAll('player.exit', player.id);
     delete this.players[player.id];
-    this.locationModifier *= -1;
     if (Object.keys(this.players).length === 0) {
       logger.info(`No more players in ${this.id}!`);
     }
@@ -1256,28 +1253,63 @@ function createGame(gameName?: string): number {
   return gameId;
 }
 
-function listenForJoin(socket: Socket) {
-  socket.on('join.player', (data: { gameId: number }) => {
-    const game = games[data.gameId];
-    const playerName = uniqueNamesGenerator(playerNameConfig);
-    const player = new Player(
-      socket,
-      playerName,
-      0,
-      0,
-      1000 * game.locationModifier,
-      game.locationModifier,
-      1,
-    );
+/**
+ * Picks the side (-1 or 1) for a joining player: the one no present player holds.
+ * An empty game gives -1, which is the first side a fresh game has always used.
+ */
+function assignSide(game: Game): number {
+  const taken = Object.values(game.players).map(p => p.direction);
+  return taken.includes(-1) ? 1 : -1;
+}
 
-    game.locationModifier *= -1;
+function findGame(data: unknown): Game | undefined {
+  const gameId = (data as { gameId?: unknown } | null | undefined)?.gameId;
+  if (typeof gameId !== 'number' || !Number.isInteger(gameId)) return undefined;
+  return Object.prototype.hasOwnProperty.call(games, gameId) ? games[gameId] : undefined;
+}
+
+function listenForJoin(socket: Socket) {
+  let joined = false;
+
+  socket.on('join.player', (data: { gameId: number }) => {
+    if (joined) {
+      logger.info('Socket %s already joined a game, ignoring join.player', socket.id);
+      return;
+    }
+    const game = findGame(data);
+    if (!game) {
+      logger.warn('Socket %s tried to join unknown game', socket.id);
+      socket.emit('join.error.notfound');
+      return;
+    }
+    if (Object.keys(game.players).length >= 2) {
+      logger.info('Game %s is full, rejecting player join from %s', game.id, socket.id);
+      socket.emit('join.error.full');
+      return;
+    }
+
+    joined = true;
+    const side = assignSide(game);
+    const playerName = uniqueNamesGenerator(playerNameConfig);
+    const player = new Player(socket, playerName, 0, 0, 1000 * side, side, 1);
 
     player.sendPlayerInfo();
     game.joinPlayer(player);
   });
 
   socket.on('join.spectator', (data: { gameId: number }) => {
-    const game = games[data.gameId];
+    if (joined) {
+      logger.info('Socket %s already joined a game, ignoring join.spectator', socket.id);
+      return;
+    }
+    const game = findGame(data);
+    if (!game) {
+      logger.warn('Socket %s tried to spectate unknown game', socket.id);
+      socket.emit('join.error.notfound');
+      return;
+    }
+
+    joined = true;
     const spectatorName = uniqueNamesGenerator(playerNameConfig);
     const player = new Player(socket, spectatorName, 0, 0, 0, 0);
     game.joinSpectator(player);
@@ -1293,7 +1325,7 @@ function setupSocket(socket: Socket) {
   });
 }
 
-export { Game, Player, Zombie, PlayerStats, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard };
+export { assignSide, Game, Player, Zombie, PlayerStats, healthFromCode, speedFromCode, fireDelayFromCode, getElo, updateElo, getLeaderboard };
 
 export default {
   setupSocket,
