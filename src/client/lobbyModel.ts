@@ -49,6 +49,12 @@ export function queueBannerText(position: number): string {
     : 'Spectating — waiting for a free seat in the next match';
 }
 
+/** Lobby line listing the queued spectators with their position, or '' when nobody waits. */
+export function waitingText(queue: Array<{ name: string }>): string {
+  if (queue.length === 0) return '';
+  return 'Waiting for next match: ' + queue.map((q, i) => `${i + 1}. ${q.name}`).join(', ');
+}
+
 /** Status line for a seat row. */
 export function seatStatus(seat: LobbySeat | null): string {
   if (!seat) return 'Open — invite a friend';

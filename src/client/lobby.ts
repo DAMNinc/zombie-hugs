@@ -1,6 +1,6 @@
 import {
   LobbyPayload, LobbySeat, isLobbyPhase, modeLabel, seatedHumans, seatStatus, invitePrompt,
-  queueBannerText, endPracticeLabel, queuePosition, droppedText, reconnectSeconds,
+  queueBannerText, waitingText, endPracticeLabel, queuePosition, droppedText, reconnectSeconds,
 } from './lobbyModel';
 
 export interface LobbyCallbacks {
@@ -21,6 +21,7 @@ export default class Lobby {
   private title = el('div', 'lobby-title');
   private seatList = el('ul', 'lobby-seats');
   private hint = el('div', 'lobby-hint');
+  private waiting = el('div', 'lobby-waiting');
   private readyBtn = el('button', 'lobby-btn lobby-ready');
   private linkInput = el('input', 'lobby-link');
   private copyBtn = el('button', 'lobby-btn lobby-copy', 'Copy link');
@@ -47,7 +48,7 @@ export default class Lobby {
 
     const linkRow = el('div', 'lobby-linkrow');
     linkRow.append(this.linkInput, this.copyBtn);
-    this.panel.append(this.title, this.seatList, this.hint, this.readyBtn, el('div', 'lobby-invite-label', 'Invite link'), linkRow);
+    this.panel.append(this.title, this.seatList, this.waiting, this.hint, this.readyBtn, el('div', 'lobby-invite-label', 'Invite link'), linkRow);
 
     for (const e of [this.panel, this.banner, this.endBtn, this.notices]) e.style.display = 'none';
     this.panel.setAttribute('role', 'region');
@@ -157,6 +158,10 @@ export default class Lobby {
     this.myReady = me.ready;
     this.title.textContent = modeLabel(p.mode, humans.length);
     this.hint.textContent = p.phase === 'countdown' ? 'Get ready…' : invitePrompt(p.mode, humans.length);
+
+    const waitingLine = waitingText(p.queue);
+    this.waiting.textContent = waitingLine;
+    this.waiting.style.display = waitingLine ? 'block' : 'none';
 
     this.seatList.replaceChildren(...p.seats.map((s, i) => this.seatRow(s, i, s !== null && s.id === this.myId)));
 

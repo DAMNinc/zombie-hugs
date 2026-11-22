@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  modeLabel, queuePosition, queueBannerText, seatStatus, endPracticeLabel,
+  modeLabel, queuePosition, queueBannerText, waitingText, seatStatus, endPracticeLabel,
   isLobbyPhase, reconnectSeconds, droppedText, seatTokenKey, seatedHumans, invitePrompt, isRanked, escapeHtml, safeColor,
 } from '../../src/client/lobbyModel';
 
@@ -34,6 +34,12 @@ describe('lobbyModel', () => {
   it('names the waiting spectator on End practice', () => {
     expect(endPracticeLabel([])).toBe('End practice');
     expect(endPracticeLabel([{ name: 'Bob' }])).toBe('Bob is waiting to join — End practice');
+  });
+
+  it('lists the queue with positions for seated players', () => {
+    expect(waitingText([])).toBe('');
+    expect(waitingText([{ name: 'Bob' }])).toBe('Waiting for next match: 1. Bob');
+    expect(waitingText([{ name: 'Bob' }, { name: 'Cy' }])).toBe('Waiting for next match: 1. Bob, 2. Cy');
   });
 
   it('knows lobby phases and token keys', () => {

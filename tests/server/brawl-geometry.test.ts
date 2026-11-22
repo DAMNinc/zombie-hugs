@@ -303,8 +303,10 @@ describe('brawl collisions, walls and shields', () => {
     expect(wall).toMatchObject({ axis: 'z', position: { x: -800, z: 300 }, ownerId: 'p2' });
     expect(ps[0].socket.events('wall.place').at(-1)!.args[0].axis).toBe('z');
     // Other owner's creature crossing it dies; the owner's passes.
-    const other = zombieIn(game, 'p0', -800, 380, 1, 0);
-    const own = zombieIn(game, 'p2', -800, 380, 1, 0);
+    // Far enough apart (> 100) that the two creatures never collide with each other: zombie ids are random
+    // hex, and all-digit ids iterate first, so overlapping creatures made the outcome order dependent.
+    const other = zombieIn(game, 'p0', -800, 390, 1, 0);
+    const own = zombieIn(game, 'p2', -800, 210, 1, 0);
     game.update(0.001);
     expect(game.zombies[other.id]).toBeUndefined();
     expect(game.zombies[own.id]).toBeDefined();

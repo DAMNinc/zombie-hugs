@@ -224,6 +224,8 @@ describe('brawl central power-up', () => {
 
   it('credits the capture to the creature owner (+2, captures) with the effect', () => {
     const ctx = startBrawl(3);
+    // A random regular power-up (e.g. heal) near the zombie would be collected too and change hp.
+    ctx.game.spawnPowerUp = () => {};
     advance(ctx, 15000);
     const central = Object.values(ctx.game.powerUps).find(p => p.central)!;
     expect(central).toBeTruthy();
