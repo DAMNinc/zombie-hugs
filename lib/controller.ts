@@ -180,6 +180,8 @@ class Game {
   suddenDeath: boolean;
   lastPowerUpSpawn: number;
   lastSpectatorVote: number;
+  countdownTimer: ReturnType<typeof setInterval> | null;
+  roundResetTimer: ReturnType<typeof setTimeout> | null;
 
   constructor(id: number, gameName?: string) {
     this.id = id;
@@ -203,6 +205,8 @@ class Game {
     this.suddenDeath = false;
     this.lastPowerUpSpawn = 0;
     this.lastSpectatorVote = 0;
+    this.countdownTimer = null;
+    this.roundResetTimer = null;
   }
 
   recordReplay(type: string, data: any) {
@@ -389,6 +393,15 @@ class Game {
     this.roundWins[player.id] = 0;
     this.stats[player.id] = new PlayerStats();
 
+    // Game handlers only act while this exact Player is still in the game, so a socket that has
+    // exited (exit, disconnect, ping kick) can no longer fire, place walls and so on.
+    const onPlayer = (event: string, handler: (...args: any[]) => void) => {
+      player.socket.on(event, (...args: any[]) => {
+        if (this.players[player.id] !== player) return;
+        handler(...args);
+      });
+    };
+
     for (const key in this.players) {
       if (this.players[key] !== player) {
         this.players[key].sendOpponentInfo(player);
@@ -396,7 +409,7 @@ class Game {
       }
     }
 
-    player.socket.on('fire', (position: Position, weaponCode: number, chargeTime?: number) => {
+    onPlayer('fire', (position: Position, weaponCode: number, chargeTime?: number) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
 
       // Fire rate check (server-authoritative)
@@ -469,23 +482,23 @@ class Game {
       }
     });
 
-    player.socket.on('move.start', (keyCode: number) => {
+    onPlayer('move.start', (keyCode: number) => {
       player.toggleMovement(keyCode, true);
       this.emitAll('move.start', keyCode, player.id);
     });
 
-    player.socket.on('move.end', (keyCode: number) => {
+    onPlayer('move.end', (keyCode: number) => {
       player.toggleMovement(keyCode, false);
       this.emitAll('move.end', keyCode, player.id);
     });
 
-    player.socket.on('weapon.set', (code: number) => {
+    onPlayer('weapon.set', (code: number) => {
       logger.debug('Player ' + player.id + ' switch to ' + code);
       player.setWeaponCode(code);
       this.emitAll('weapon.set', code, player.id);
     });
 
-    player.socket.on('shield', () => {
+    onPlayer('shield', () => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
       const now = Date.now();
       if (player.shield.active) return;
@@ -499,7 +512,7 @@ class Game {
     });
 
     // Wall placement
-    player.socket.on('place.wall', (x: number) => {
+    onPlayer('place.wall', (x: number) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
       if (player.score < WALL_COST) return;
 
@@ -517,24 +530,28 @@ class Game {
       this.recordReplay('wall.place', wall);
     });
 
-    player.socket.on('ready', () => {
+    onPlayer('ready', () => {
       player.ready = true;
       this.checkReady();
     });
 
-    player.socket.on('rematch', () => {
+    onPlayer('rematch', () => {
       player.wantsRematch = true;
       this.checkRematch();
     });
 
-    player.socket.on('exit', () => {
+    onPlayer('exit', () => {
       this.exitPlayer(player);
     });
 
-    player.socket.on('pingpong', () => {
+    onPlayer('pingpong', () => {
       logger.debug(`Ping from ${player.name} (${player.id})`);
       player.lastPing = Date.now();
       player.socket.emit('pong');
+    });
+
+    player.socket.on('disconnect', () => {
+      this.exitPlayer(player);
     });
 
     // Send ELO info
@@ -553,17 +570,18 @@ class Game {
   }
 
   startCountdown() {
+    this.clearCountdown();
     this.phase = 'countdown';
     let remaining = COUNTDOWN_SECONDS;
 
     this.emitAll('game.countdown', remaining);
 
-    const countdownInterval = setInterval(() => {
+    this.countdownTimer = setInterval(() => {
       remaining--;
       if (remaining > 0) {
         this.emitAll('game.countdown', remaining);
       } else {
-        clearInterval(countdownInterval);
+        this.clearCountdown();
         this.phase = 'playing';
         this.roundStartTime = Date.now();
         this.suddenDeath = false;
@@ -574,6 +592,41 @@ class Game {
         this.recordReplay('game.start', {});
       }
     }, 1000);
+  }
+
+  clearCountdown() {
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
+  }
+
+  /** Back to a fresh lobby for whoever is still here (used when a game drops below 2 players). */
+  resetToLobby() {
+    this.clearCountdown();
+    if (this.roundResetTimer) {
+      clearTimeout(this.roundResetTimer);
+      this.roundResetTimer = null;
+    }
+    this.phase = 'lobby';
+    this.round = 1;
+    this.zombies = {};
+    this.powerUps = {};
+    this.walls = {};
+    this.hazards = [];
+    this.suddenDeath = false;
+    this.replay = [];
+    this.roundWins = {};
+    this.stats = {};
+    for (const id in this.players) {
+      this.roundWins[id] = 0;
+      this.stats[id] = new PlayerStats();
+      this.players[id].resetForRound();
+      this.players[id].wantsRematch = false;
+      // The client only sends 'ready' once after joining, so stay ready: a newcomer's ready starts the match.
+      this.players[id].ready = true;
+    }
+    this.emitAll('game.reset');
   }
 
   checkRematch() {
@@ -620,9 +673,15 @@ class Game {
   }
 
   exitPlayer(player: Player) {
+    if (this.players[player.id] !== player) return;
     logger.info(`Player ${player.name} (${player.id}) exited`);
     this.emitAll('player.exit', player.id);
     delete this.players[player.id];
+    delete this.roundWins[player.id];
+    delete this.stats[player.id];
+    if (this.phase !== 'lobby' && Object.keys(this.players).length < 2) {
+      this.resetToLobby();
+    }
     if (Object.keys(this.players).length === 0) {
       logger.info(`No more players in ${this.id}!`);
     }
@@ -636,15 +695,24 @@ class Game {
     }
 
     this.spectators[spectator.id] = spectator;
+    const onSpectator = (event: string, handler: (...args: any[]) => void) => {
+      spectator.socket.on(event, (...args: any[]) => {
+        if (this.spectators[spectator.id] !== spectator) return;
+        handler(...args);
+      });
+    };
+    spectator.socket.on('disconnect', () => {
+      delete this.spectators[spectator.id];
+    });
     this.emitAll('spectator', spectator.toJSON());
 
-    spectator.socket.on('pingpong', () => {
+    onSpectator('pingpong', () => {
       spectator.lastPing = Date.now();
       spectator.socket.emit('pong');
     });
 
     // Spectator interference voting
-    spectator.socket.on('spectator.vote', (eventType: string) => {
+    onSpectator('spectator.vote', (eventType: string) => {
       if (this.phase !== 'playing' && this.phase !== 'sudden_death') return;
       const now = Date.now();
       if (now - this.lastSpectatorVote < SPECTATOR_VOTE_COOLDOWN_MS) return;
@@ -964,7 +1032,8 @@ class Game {
       this.phase = 'round_over';
       this.round++;
 
-      setTimeout(() => {
+      this.roundResetTimer = setTimeout(() => {
+        this.roundResetTimer = null;
         if (this.phase === 'round_over') {
           this.resetForNextRound();
           this.emitAll('round.reset');

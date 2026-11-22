@@ -699,6 +699,23 @@ function setupEvents(): void {
     }
   });
 
+  // The opponent left mid-game: the server reset to the lobby, so clear the leftover round state.
+  socket.on('game.reset', () => {
+    if (hud) hud.hideMatchOver();
+    for (const key in gameState.zombies) {
+      removeZombie(key);
+    }
+    for (const pid in shieldMeshes) {
+      removeShieldMesh(pid);
+    }
+    clearArenaFeatures();
+    gameState.shieldCooldownUntil = 0;
+    if (hud) {
+      hud.hideSuddenDeath();
+      hud.hidePowerUp();
+    }
+  });
+
   // Shield events
   socket.on('shield.activate', (playerId: string) => {
     addShieldMesh(playerId);

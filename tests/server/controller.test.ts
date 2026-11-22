@@ -319,7 +319,6 @@ describe('player exit', () => {
     expect(b.socket.events('player.exit')[0].args).toEqual(['a']);
   });
 
-  it.todo('opponent exit mid-game ends the match by forfeit'); // see shared/t2-bugs-found.md
 
   it('checkPing removes players that stopped pinging', () => {
     const { game, a, b } = startPlaying();
