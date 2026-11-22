@@ -7,8 +7,6 @@ import CamController from './camController';
 import Explosion from './explosion';
 import Terrain from './terrain';
 import Fox from './fox';
-import gameConsole from './console';
-import Score from './score';
 import HUD from './hud';
 import Audio from './audio';
 import ScreenShake from './screenshake';
@@ -68,6 +66,7 @@ function updateGameState(elapsed: number): void {
     if (hud && !camController.isSpectatorMode()) {
       hud.updateCharge(camController.getChargePct());
       hud.updateCameraMode(camController.isThirdPerson());
+      hud.updateWeaponBar(camController.weapon, (c) => camController!.getCooldownPct(c));
 
       // Show/hide own player mesh based on camera mode
       const myPlayer = gameState.players[gameState.myId];
@@ -172,7 +171,6 @@ function createFoxFromModel(direction: number, position: any, model: any, name?:
 }
 
 function setWeapon(player: Player, code: number): void {
-  gameConsole.log('called for ' + player.name);
   const zombieModel = getZombieModelFromCode(code);
 
   const startPosition = {
@@ -408,14 +406,12 @@ function clearArenaFeatures(): void {
 function setupEvents(): void {
   // Event for receiving information about zombies.
   socket.on('zombie', (zombie: any, playerId: string) => {
-    gameConsole.log('Zombie added for ' + playerId);
     addZombie(zombie, playerId, true);
   });
 
   // Event for receiving player information from the server.
   socket.on('player', (player: any) => {
     gameState.myId = player.id;
-    gameConsole.info('I am: ' + player.name);
 
     const p = new Player(player.id, player.name, player.position, player.direction, models!.getPlayer(player.direction));
     setWeapon(p, Constants.FOX);
@@ -434,8 +430,12 @@ function setupEvents(): void {
 
     camController = new CamController(camera, socket, player.direction);
 
-    // Setup mobile weapon buttons
+    // Weapon bar (desktop), mobile weapon buttons, one-time controls hint
     if (hud) {
+      hud.createWeaponBar((code: number) => {
+        if (camController) camController.selectWeaponByCode(code);
+      });
+      hud.showControlsHint();
       hud.createMobileWeaponButtons((code: number) => {
         if (camController) {
           camController.selectWeaponByCode(code);
@@ -452,7 +452,6 @@ function setupEvents(): void {
 
   // Event for receiving opponent information from the server.
   socket.on('opponent', (player: any) => {
-    gameConsole.info('The opponent has joined the game: ' + player.name);
 
     const p = new Player(player.id, player.name, player.position, player.direction, models!.getPlayer(player.direction));
     setWeapon(p, player.weaponCode);
@@ -469,18 +468,15 @@ function setupEvents(): void {
 
   // Event for receiving spectator information from the server.
   socket.on('spectator', (_player: any) => {
-    gameConsole.info('A spectator has joined...');
   });
 
   socket.on('move.start', (keyCode: number, playerId: string) => {
-    gameConsole.log('Player move start');
     if (gameState.players[playerId]) {
       gameState.players[playerId].toggleMovement(keyCode, true);
     }
   });
 
   socket.on('move.end', (keyCode: number, playerId: string) => {
-    gameConsole.log('Player move end');
     if (gameState.players[playerId]) {
       gameState.players[playerId].toggleMovement(keyCode, false);
     }
@@ -524,8 +520,6 @@ function setupEvents(): void {
       clientPlayer.setScore(serverPlayer.score);
 
       if (clientPlayer.id === gameState.myId) {
-        Score.update(serverPlayer.score);
-
         // Update active power-up display
         if (hud && serverPlayer.activePowerUps && serverPlayer.activePowerUps.length > 0) {
           hud.showPowerUp(serverPlayer.activePowerUps[0]);
@@ -583,7 +577,6 @@ function setupEvents(): void {
     const zombie2 = gameState.zombies[zombieId2];
     if (!zombie1 || !zombie2) return;
 
-    gameConsole.info('Collision between ' + zombie1.name + ' and ' + zombie2.name);
 
     const wc = zombie1.weaponCode || zombie2.weaponCode || 0;
     gameState.explosions.push(new Explosion(scene, zombie1.getMesh().position, wc));
@@ -600,7 +593,6 @@ function setupEvents(): void {
   socket.on('zombie.out-of-bounds', (zombieId: string, firedByPlayerId: string) => {
     const zombie = gameState.zombies[zombieId];
     if (!zombie) return;
-    gameConsole.info(zombie.name + ' has left the building!');
 
     if (killFeed) {
       const scorerName = getPlayerName(firedByPlayerId);
@@ -630,7 +622,6 @@ function setupEvents(): void {
   socket.on('weapon.set', (code: number, playerId: string) => {
     const player = gameState.players[playerId];
     if (!player) return;
-    gameConsole.info(player.name + ' switch to ' + code);
     setWeapon(player, code);
     if (audio) audio.play('weapon_switch');
   });
@@ -638,7 +629,6 @@ function setupEvents(): void {
   socket.on('player.exit', (playerId: string) => {
     const player = gameState.players[playerId];
     if (!player) return;
-    gameConsole.info('Player exited! ' + player.name);
     scene.remove(player.getMesh());
     delete gameState.players[playerId];
     // The opponent (not me) left: wait for a replacement.
@@ -1101,10 +1091,8 @@ class ZombieHugs {
 
     const checkReady = () => {
       if (!models!.isReady()) {
-        gameConsole.log('Waiting for models...');
         setTimeout(checkReady, 1000);
       } else {
-        gameConsole.log('Models loaded');
         gameState.game = this;
         setupEvents();
         animating = true;

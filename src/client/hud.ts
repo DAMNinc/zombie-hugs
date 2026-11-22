@@ -1,6 +1,19 @@
 import Constants from './constants';
 
+const HINT_KEY = 'zombieHugsControlsHintSeen';
+
+// Trait text is the matchup legend (see Zombie.isCollision in lib/controller.ts).
+const WEAPON_INFO = [
+  { code: 1, name: 'Fox', color: '#ff6600', trait: 'zigzags, so it is hard to intercept (1 HP)' },
+  { code: 2, name: 'Horse', color: '#aa8833', trait: 'survives one collision and pushes through (2 HP)' },
+  { code: 3, name: 'Flamingo', color: '#ff69b4', trait: 'flies — only flamingos can stop it; fastest reload' },
+  { code: 4, name: 'Zombie', color: '#33ff33', trait: 'tanks multiple collisions (3 HP); fire before Horse for Juggernaut' },
+  { code: 5, name: 'Horde', color: '#9933ff', trait: 'fires a pack of 5 small creatures; slowest reload' },
+];
+
 export default class HUD {
+  private weaponBar: HTMLDivElement | null = null;
+  private weaponSlots: Record<string, HTMLButtonElement> = {};
   private container: HTMLDivElement;
   private hpBar: HTMLDivElement;
   private hpText: HTMLSpanElement;
@@ -309,9 +322,6 @@ export default class HUD {
   updateScore(myScore: number, opponentScore: number): void {
     this.scoreText.textContent = String(myScore);
     this.opponentScoreText.textContent = String(opponentScore);
-
-    const oldScore = document.getElementById('score');
-    if (oldScore) oldScore.innerHTML = String(myScore);
   }
 
   updateHP(myHp: number, opponentHp: number): void {
@@ -614,6 +624,70 @@ export default class HUD {
 
   updateCameraMode(thirdPerson: boolean): void {
     this.cameraModeIndicator.textContent = thirdPerson ? '3RD PERSON [V]' : '1ST PERSON [V]';
+  }
+
+  // Desktop weapon bar: number key, name, selected highlight, cooldown fill.
+  createWeaponBar(onSelect: (code: number) => void): void {
+    if (this.isSpectator || this.weaponBar) return;
+    if ('ontouchstart' in window) return; // touch devices get the mobile buttons
+
+    const bar = document.createElement('div');
+    bar.className = 'weapon-bar';
+    bar.setAttribute('data-ui', '');
+    for (const w of WEAPON_INFO) {
+      const slot = document.createElement('button');
+      slot.type = 'button';
+      slot.className = 'weapon-slot';
+      slot.style.setProperty('--wcolor', w.color);
+      slot.title = `${w.name} — ${w.trait}`;
+      slot.innerHTML = `<span class="swatch" style="background:${w.color}"></span><span class="key">${w.code}</span>${w.name}<div class="cooldown"></div>`;
+      slot.addEventListener('click', () => {
+        onSelect(w.code);
+        slot.blur(); // keep Space/keys going to the game
+      });
+      bar.appendChild(slot);
+      this.weaponSlots[w.code] = slot;
+    }
+    this.container.appendChild(bar);
+    this.weaponBar = bar;
+  }
+
+  updateWeaponBar(selected: number, cooldownPct: (code: number) => number): void {
+    if (!this.weaponBar) return;
+    for (const code in this.weaponSlots) {
+      const slot = this.weaponSlots[code];
+      const pct = cooldownPct(Number(code));
+      slot.classList.toggle('selected', Number(code) === selected);
+      slot.classList.toggle('ready', pct >= 1);
+      (slot.lastElementChild as HTMLElement).style.width = pct * 100 + '%';
+    }
+  }
+
+  // One-time dismissible controls card (localStorage flag).
+  showControlsHint(): void {
+    if (this.isSpectator) return;
+    try {
+      if (localStorage.getItem(HINT_KEY)) return;
+    } catch (e) { /* storage unavailable: show every time */ }
+
+    const card = document.createElement('div');
+    card.className = 'controls-hint';
+    card.setAttribute('data-ui', '');
+    card.innerHTML = `
+      <b>Controls</b><br>
+      <b>A / D</b> move &nbsp; <b>click / hold</b> fire or charge<br>
+      <b>1-5</b> pick creature &nbsp; <b>Q</b> shield<br>
+      <b>E</b> place wall &nbsp; <b>V</b> camera view
+    `;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Got it';
+    btn.addEventListener('click', () => {
+      card.remove();
+      try { localStorage.setItem(HINT_KEY, '1'); } catch (e) { /* ignore */ }
+    });
+    card.appendChild(btn);
+    this.container.appendChild(card);
   }
 
   // Mobile weapon buttons

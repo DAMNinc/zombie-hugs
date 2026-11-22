@@ -269,6 +269,13 @@ export default class CamController {
     }
   }
 
+  /** 0..1 progress of the fire delay for a weapon since the last shot (1 = ready). */
+  getCooldownPct(code: number): number {
+    const delay = Util.getWeaponDelay(code);
+    if (delay <= 0) return 1;
+    return Math.min(1, Math.max(0, (Date.now() - lastShot) / delay));
+  }
+
   update(elapsed: number): void {
     const tr = 100.0;
     let curPosX = camera.position.x;
@@ -298,19 +305,6 @@ export default class CamController {
       camera.position.z = curPosZ;
       camera.rotation.y = curRot;
       return;
-    } else {
-      // Reload bar
-      const delay = Util.getWeaponDelay(this.weapon);
-      const now = new Date().getTime();
-
-      const reloader = document.getElementById('reload-bar');
-      if (reloader) {
-        if (now - lastShot <= delay) {
-          reloader.style.width = ((now - lastShot) / delay) * 100 + '%';
-        } else {
-          reloader.style.width = '100%';
-        }
-      }
     }
 
     // Player lateral movement
