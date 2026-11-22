@@ -195,6 +195,36 @@ function setWeapon(player: Player, code: number): void {
   player.setWeapon(code, fox);
 }
 
+const OWN_COLOR = 0x4caf50;
+const OPP_COLOR = 0xf44336;
+let ringGeometry: THREE.RingGeometry | null = null;
+const ringMaterials: Record<string, THREE.MeshBasicMaterial> = {};
+
+// Shared by all creatures: marked so disposeObject skips them.
+function getRingGeometry(): THREE.RingGeometry {
+  if (!ringGeometry) {
+    ringGeometry = new THREE.RingGeometry(55, 80, 32);
+    ringGeometry.userData.shared = true;
+  }
+  return ringGeometry;
+}
+
+function getRingMaterial(mine: boolean): THREE.MeshBasicMaterial {
+  const key = mine ? 'mine' : 'opp';
+  if (!ringMaterials[key]) {
+    const m = new THREE.MeshBasicMaterial({
+      color: mine ? OWN_COLOR : OPP_COLOR,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    m.userData.shared = true;
+    ringMaterials[key] = m;
+  }
+  return ringMaterials[key];
+}
+
 function addZombie(zombie: any, playerId: string | undefined, playSound: boolean): void {
   if (gameState.zombies[zombie.id]) return;
   const weaponCode = zombie.weaponCode || (playerId && gameState.players[playerId]?.getWeaponCode()) || 1;
@@ -216,6 +246,26 @@ function addZombie(zombie: any, playerId: string | undefined, playSound: boolean
       mesh.scale.y * chargeScale,
       mesh.scale.z * chargeScale,
     );
+  }
+
+  // Owner tint: a ring under the creature, green for mine and red for the opponent's.
+  // The state payload has no owner, so fall back to the direction (creatures move against their owner's side).
+  let ownerId = playerId;
+  if (!ownerId) {
+    for (const pid in gameState.players) {
+      if (gameState.players[pid].direction === -zombie.direction) ownerId = pid;
+    }
+  }
+  if (ownerId) {
+    const mesh = fox.getMesh();
+    const ring = new THREE.Mesh(getRingGeometry(), getRingMaterial(ownerId === gameState.myId));
+    ring.name = 'owner-ring';
+    // Undo the creature's scale so the ring has the same world size for every type.
+    const k = 1 / (mesh.scale.x || 1);
+    ring.scale.set(k, k, k);
+    ring.position.y = 44 * k; // mesh sits 40 below the creature position; this puts the ring just above ground
+    ring.rotation.x = -Math.PI / 2;
+    mesh.add(ring);
   }
 
   scene.add(fox.getMesh());
@@ -518,6 +568,10 @@ function setupEvents(): void {
         continue;
       }
       clientPlayer.setPosition(serverPlayer.position);
+      const scoreGain = serverPlayer.score - clientPlayer.score;
+      if (hud && scoreGain > 0) {
+        hud.floatScore(scoreGain, clientPlayer.id === gameState.myId);
+      }
       clientPlayer.setScore(serverPlayer.score);
 
       if (clientPlayer.id === gameState.myId) {
@@ -763,8 +817,9 @@ function setupEvents(): void {
 
   // Damage event
   socket.on('player.damage', (playerId: string, _newHp: number) => {
-    if (playerId === gameState.myId && screenShake) {
-      screenShake.trigger(8);
+    if (playerId === gameState.myId) {
+      if (screenShake) screenShake.trigger(8);
+      if (hud) hud.flashDamage();
     }
   });
 

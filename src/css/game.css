@@ -146,6 +146,32 @@ html, body {
   cursor: pointer;
 }
 
+/* Hit and score feedback (HUD) */
+.hud-damage-flash {
+  position: fixed; inset: 0; pointer-events: none; opacity: 0;
+  box-shadow: inset 0 0 120px 40px rgba(255, 0, 0, 0.75);
+}
+.hud-damage-flash.active { animation: hud-damage-flash 0.5s ease-out; }
+@keyframes hud-damage-flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+.hud-hp-pulse { animation: hud-hp-pulse 0.5s ease-out; }
+@keyframes hud-hp-pulse {
+  0% { scale: 1.25; box-shadow: 0 0 14px 4px rgba(255, 40, 40, 0.9); border-color: #f44336; }
+  100% { scale: 1; box-shadow: none; }
+}
+
+.hud-score-float {
+  position: fixed; top: 58px; left: 50%; font-weight: bold; text-shadow: 1px 1px 3px #000;
+  pointer-events: none; opacity: 0; animation: hud-score-float 1.1s ease-out forwards;
+}
+.hud-score-float.mine { color: #4caf50; font-size: 32px; margin-left: -60px; }
+.hud-score-float.opp { color: #f44336; font-size: 20px; margin-left: 40px; }
+@keyframes hud-score-float {
+  0% { opacity: 0; transform: translateY(0) scale(0.6); }
+  15% { opacity: 1; transform: translateY(-6px) scale(1.2); }
+  100% { opacity: 0; transform: translateY(-50px) scale(1); }
+}
+
 /* Mobile control bar (touch devices): weapons + shield / wall / camera in one row */
 .mobile-bar {
   position: fixed;

@@ -24,6 +24,7 @@ export default class HUD {
   private container: HTMLDivElement;
   private hpBar: HTMLDivElement;
   private hpText: HTMLSpanElement;
+  private damageFlash: HTMLDivElement | null = null;
   private scoreText: HTMLSpanElement;
   private opponentScoreText: HTMLSpanElement;
   private opponentHpBar: HTMLDivElement;
@@ -332,6 +333,32 @@ export default class HUD {
 
   getSpectatorPanel(): HTMLDivElement {
     return this.spectatorPanel;
+  }
+
+  /** Red edge flash plus a pulse on the HP bar (CSS animations; retriggered on every hit). */
+  flashDamage(): void {
+    const retrigger = (el: HTMLElement | null, cls: string) => {
+      if (!el) return;
+      el.classList.remove(cls);
+      void el.offsetWidth; // restart the animation
+      el.classList.add(cls);
+    };
+    if (!this.damageFlash) {
+      this.damageFlash = document.createElement('div');
+      this.damageFlash.className = 'hud-damage-flash';
+      this.container.appendChild(this.damageFlash);
+    }
+    retrigger(this.damageFlash, 'active');
+    retrigger(this.hpBar.parentElement, 'hud-hp-pulse');
+  }
+
+  /** Floating "+N" that rises and fades below the score display. Smaller and red for the opponent. */
+  floatScore(points: number, mine: boolean): void {
+    const el = document.createElement('div');
+    el.className = 'hud-score-float ' + (mine ? 'mine' : 'opp');
+    el.textContent = `+${points}`;
+    el.addEventListener('animationend', () => el.remove());
+    this.container.appendChild(el);
   }
 
   updateScore(myScore: number, opponentScore: number): void {
