@@ -39,3 +39,10 @@ export function effectiveCharge(chargeTime: unknown, sinceLastFire: number): num
   if (!isFiniteNumber(chargeTime)) return null;
   return clamp(Math.min(chargeTime, sinceLastFire), 0, MAX_CHARGE_MS);
 }
+
+export const MAX_TOKEN_LENGTH = 128;
+
+/** Reconnect token: a non-empty string of at most MAX_TOKEN_LENGTH characters, else null. */
+export function validToken(v: unknown): string | null {
+  return typeof v === 'string' && v.length > 0 && v.length <= MAX_TOKEN_LENGTH ? v : null;
+}
