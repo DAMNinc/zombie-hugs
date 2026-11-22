@@ -6,6 +6,14 @@ vi.mock('../../lib/logger', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), verbose: vi.fn() },
 }));
 
+// Zombie ids are random strings; all-digit ones sort first in object key order, so never index
+// game.zombies by position. Fire and return the creature(s) this shot added.
+function fireNew(game: any, socket: any, ...args: any[]) {
+  const before = new Set(Object.keys(game.zombies));
+  socket.trigger('fire', ...args);
+  return Object.entries(game.zombies).filter(([id]) => !before.has(id)).map(([, z]) => z as any);
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
@@ -41,12 +49,10 @@ describe('fire validation (B2, A7)', () => {
 
   it('clamps negative and huge charge', () => {
     const { game, a } = startPlaying();
-    a.socket.trigger('fire', { x: 0 }, 1, -5000);
-    expect(Object.values(game.zombies)[0].chargeRatio).toBe(0);
+    expect(fireNew(game, a.socket, { x: 0 }, 1, -5000)[0].chargeRatio).toBe(0);
     vi.advanceTimersByTime(1000);
-    a.socket.trigger('fire', { x: 0 }, 1, 1e12);
     // 1000 ms since the last shot caps it
-    expect(Object.values(game.zombies)[1].chargeRatio).toBeCloseTo(1000 / 3000);
+    expect(fireNew(game, a.socket, { x: 0 }, 1, 1e12)[0].chargeRatio).toBeCloseTo(1000 / 3000);
   });
 
   it('first shot of a round can charge to the maximum', () => {
@@ -59,8 +65,8 @@ describe('fire validation (B2, A7)', () => {
     const { game, a } = startPlaying();
     a.socket.trigger('fire', { x: 0 }, 1, 0);
     vi.advanceTimersByTime(1500);
-    a.socket.trigger('fire', { x: 0 }, 1, 3000);
-    expect(Object.values(game.zombies)[1].chargeRatio).toBeCloseTo(0.5);
+    const [z] = fireNew(game, a.socket, { x: 0 }, 1, 3000);
+    expect(z.chargeRatio).toBeCloseTo(0.5);
   });
 
   it('takes z from the server player, not the client', () => {
@@ -82,8 +88,7 @@ describe('fire validation (B2, A7)', () => {
     expect(Object.keys(game.zombies)).toHaveLength(1);
     a.player.position.x = LIMIT;
     vi.advanceTimersByTime(1000);
-    a.socket.trigger('fire', { x: 1e9 }, 1, 0);
-    expect(Object.values(game.zombies)[1].position.x).toBe(LIMIT);
+    expect(fireNew(game, a.socket, { x: 1e9 }, 1, 0)[0].position.x).toBe(LIMIT);
   });
 });
 

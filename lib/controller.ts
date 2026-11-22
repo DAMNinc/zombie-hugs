@@ -52,7 +52,8 @@ const WALL_WIDTH = 300;
 const SPECTATOR_VOTE_COOLDOWN_MS = 15000;
 
 // Synergy constants
-const SYNERGY_WINDOW_MS = 2000;
+// Must exceed the longest fire delay (horde, 3000 ms) so Stampede (horse then horde) is reachable.
+const SYNERGY_WINDOW_MS = 3500;
 
 // Charged shot constants
 
